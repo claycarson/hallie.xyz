@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Find the Monster — Hallie's Games</title>
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  /* Full-screen game — body fills viewport, no scroll */
+  body {
+    overflow: hidden;
+    height: 100vh;
+    background: #000;
+    padding-bottom: 0;
+    cursor: none;
+  }
+
+  /* Topbar floats over the dark game */
+  .topbar { cursor: auto; }
+
+  /* ── Darkness overlay ── */
+  #darkness {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    /* Updated via JS to carve a flashlight hole */
+    background: radial-gradient(circle 130px at -999px -999px, transparent 35%, rgba(0,0,0,0.97) 100%);
+    transition: background 0.04s linear;
+  }
+
+  /* ── Monster ── */
+  #monster {
+    position: fixed;
+    font-size: clamp(60px, 12vmin, 100px);
+    line-height: 1;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    cursor: none;
+    transition: transform 0.15s;
+    will-change: transform;
+  }
+
+  #monster.wiggling {
+    animation: monster-wiggle 0.4s ease-in-out infinite alternate;
+  }
+
+  #monster.caught {
+    animation: monster-caught 0.5s ease forwards;
+    pointer-events: none;
+  }
+
+  @keyframes monster-wiggle {
+    from { transform: translate(-50%, -50%) rotate(-12deg) scale(1.05); }
+    to   { transform: translate(-50%, -50%) rotate(12deg)  scale(1.1); }
+  }
+
+  @keyframes monster-caught {
+    0%   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    40%  { transform: translate(-50%, -80%) scale(1.5) rotate(20deg); opacity: 1; }
+    100% { transform: translate(-50%, -120%) scale(0) rotate(45deg); opacity: 0; }
+  }
+
+  /* ── Glowing eyes (visible above darkness when nearby) ── */
+  #monster-eyes {
+    position: fixed;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  #monster-eyes.show { opacity: 1; }
+
+  #monster-eyes::before,
+  #monster-eyes::after {
+    content: '';
+    position: absolute;
+    width: clamp(10px, 2.5vmin, 16px);
+    height: clamp(10px, 2.5vmin, 16px);
+    border-radius: 50%;
+    background: #aaff44;
+    box-shadow: 0 0 8px 4px rgba(170,255,68,0.7), 0 0 20px 6px rgba(170,255,68,0.35);
+    animation: eye-pulse 1s ease-in-out infinite alternate;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  #monster-eyes::before { left: clamp(-22px, -5vmin, -30px); }
+  #monster-eyes::after  { left: clamp(8px,  2vmin,  14px); }
+
+  @keyframes eye-pulse {
+    from { box-shadow: 0 0 8px 4px rgba(170,255,68,0.7), 0 0 20px 6px rgba(170,255,68,0.35); }
+    to   { box-shadow: 0 0 14px 7px rgba(170,255,68,0.9), 0 0 32px 10px rgba(170,255,68,0.5); }
+  }
+
+  /* ── "Move your finger to search!" first-load hint ── */
+  #search-hint {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
+    color: rgba(255,255,255,0.45);
+    font-size: clamp(0.85rem, 3vw, 1.1rem);
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 0.6s;
+    white-space: nowrap;
+  }
+  #search-hint.hidden { opacity: 0; }
+
+  /* ── Score display: "Found: N" ── */
+  #found-count { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR (dark floating variant) -->
+<div class="topbar topbar-dark">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    👾 Found: <span id="found-count">0</span>
+  </div>
+  <a href="../../" class="back-btn">← Games</a>
+</div>
+
+<!-- MONSTER -->
+<div id="monster">👾</div>
+
+<!-- GLOWING EYES (above darkness) -->
+<div id="monster-eyes"></div>
+
+<!-- DARKNESS OVERLAY -->
+<div id="darkness"></div>
+
+<!-- FLASH MESSAGE -->
+<div class="flash-msg" id="flash-msg"></div>
+
+<!-- SECRET MODAL -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- CONFETTI -->
+<div id="confetti-layer"></div>
+
+<!-- FIRST-LOAD HINT -->
+<div id="search-hint">🔦 Move your mouse (or finger) to search the darkness!</div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const FLASHLIGHT_R  = 130;   // px — radius of transparent circle
+const NEAR_DIST     = FLASHLIGHT_R + 140; // eyes appear, monster wiggles
+const LIT_DIST      = FLASHLIGHT_R - 15;  // monster catchable
+const TOPBAR_H      = 64;    // px — safe zone below topbar
+const EDGE_PAD      = 80;    // px — padding from screen edges
+
+const MONSTERS = ['👹','👾','👻','🐙','🦑','🎃','🐲','🤡','🐸','🦎'];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let monsterX = 0, monsterY = 0;
+let cursorX  = -999, cursorY = -999;
+let foundCount = 0;
+let catching = false;
+let hintDismissed = false;
+
+const darkness     = document.getElementById('darkness');
+const monsterEl    = document.getElementById('monster');
+const eyesEl       = document.getElementById('monster-eyes');
+const foundCountEl = document.getElementById('found-count');
+const hintEl       = document.getElementById('search-hint');
+
+// ─────────────────────────────────────────────
+// MONSTER PLACEMENT
+// ─────────────────────────────────────────────
+function spawnMonster() {
+  catching = false;
+  monsterEl.classList.remove('caught', 'wiggling');
+  eyesEl.classList.remove('show');
+
+  // Pick a different emoji than the last one
+  const current = monsterEl.textContent;
+  const pool = MONSTERS.filter(m => m !== current);
+  monsterEl.textContent = pool[Math.floor(Math.random() * pool.length)];
+
+  // Random safe position
+  const minX = EDGE_PAD;
+  const maxX = window.innerWidth  - EDGE_PAD;
+  const minY = TOPBAR_H + EDGE_PAD;
+  const maxY = window.innerHeight - EDGE_PAD;
+
+  monsterX = minX + Math.random() * (maxX - minX);
+  monsterY = minY + Math.random() * (maxY - minY);
+
+  monsterEl.style.left = monsterX + 'px';
+  monsterEl.style.top  = monsterY + 'px';
+
+  eyesEl.style.left = monsterX + 'px';
+  eyesEl.style.top  = monsterY + 'px';
+}
+
+// ─────────────────────────────────────────────
+// FLASHLIGHT + PROXIMITY UPDATE
+// ─────────────────────────────────────────────
+function updateLight(x, y) {
+  cursorX = x;
+  cursorY = y;
+
+  // Update flashlight position
+  darkness.style.background =
+    `radial-gradient(circle ${FLASHLIGHT_R}px at ${x}px ${y}px, transparent 35%, rgba(0,0,0,0.97) 100%)`;
+
+  if (catching) return;
+
+  // Distance from flashlight center to monster center
+  const dx = x - monsterX;
+  const dy = y - monsterY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  const isNear = dist < NEAR_DIST;
+  eyesEl.classList.toggle('show', isNear);
+  monsterEl.classList.toggle('wiggling', isNear);
+}
+
+// ─────────────────────────────────────────────
+// CATCH
+// ─────────────────────────────────────────────
+function tryClick(x, y) {
+  if (catching) return;
+
+  const dx = x - monsterX;
+  const dy = y - monsterY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist > LIT_DIST) return; // in the dark — ignore
+
+  catching = true;
+  foundCount++;
+  foundCountEl.textContent = foundCount;
+
+  monsterEl.classList.remove('wiggling');
+  monsterEl.classList.add('caught');
+  eyesEl.classList.remove('show');
+
+  Hallie.addSession(1);
+  Hallie.confetti();
+  Hallie.flashMessage('Got it! 🎉');
+
+  setTimeout(spawnMonster, 1600);
+}
+
+// ─────────────────────────────────────────────
+// HINT DISMISSAL
+// ─────────────────────────────────────────────
+function dismissHint() {
+  if (hintDismissed) return;
+  hintDismissed = true;
+  hintEl.classList.add('hidden');
+}
+
+// ─────────────────────────────────────────────
+// MOUSE EVENTS
+// ─────────────────────────────────────────────
+document.addEventListener('mousemove', e => {
+  dismissHint();
+  updateLight(e.clientX, e.clientY);
+});
+
+document.addEventListener('click', e => {
+  tryClick(e.clientX, e.clientY);
+});
+
+// ─────────────────────────────────────────────
+// TOUCH EVENTS
+// ─────────────────────────────────────────────
+document.addEventListener('touchmove', e => {
+  e.preventDefault();
+  dismissHint();
+  const t = e.touches[0];
+  updateLight(t.clientX, t.clientY);
+}, { passive: false });
+
+document.addEventListener('touchstart', e => {
+  dismissHint();
+  const t = e.touches[0];
+  updateLight(t.clientX, t.clientY);
+  tryClick(t.clientX, t.clientY);
+}, { passive: true });
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+Hallie.initSecretTap(document.getElementById('token-display'));
+spawnMonster();
+</script>
+</body>
+</html>

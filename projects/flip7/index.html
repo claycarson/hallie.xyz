@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Flip 7">
+  <meta name="theme-color" content="#000000">
+  <title>Flip 7</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link id="systemcss" rel="stylesheet" href="https://unpkg.com/@sakun/system.css">
+  <link id="theme-css" rel="stylesheet" href="theme-classic.css">
+  <style>
+    /* ── Shared base ── */
+    html {
+      -webkit-text-size-adjust: 100%;
+      height: 100%;
+    }
+
+    /* ── Screen visibility ── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── Layout primitives ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .bonus-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .scoring-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 2px;
+    }
+
+    .game-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .player-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .player-row input { flex: 1; }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-bottom: 12px;
+    }
+
+    .winner-wrap { text-align: center; padding: 24px 0; }
+    .col-total { font-weight: bold; }
+    .editable-score { cursor: pointer; }
+    .editable-score input {
+      width: 40px;
+      border: none;
+      background: transparent;
+      text-align: center;
+      font: inherit;
+      padding: 0;
+      -moz-appearance: textfield;
+    }
+    .editable-score input::-webkit-inner-spin-button,
+    .editable-score input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    .calc-display.dimmed { opacity: 0.25; }
+
+    /* ── iOS / Mobile ── */
+    input[type="text"],
+    input[type="number"] { font-size: 16px !important; }
+
+    button, input, select { touch-action: manipulation; }
+
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  </style>
+</head>
+<body>
+  <div class="stars-bg"></div>
+
+  <div class="window" style="width:100%; max-width:480px;">
+    <div class="title-bar">
+      <button class="close" aria-label="Close"></button>
+      <span class="header-sparkle">🦄</span>
+      <button id="theme-toggle-btn" onclick="cycleTheme()" title="Switch theme">🦄</button>
+      <h1 class="title">Flip 7</h1>
+      <span class="header-sparkle">✨</span>
+      <button class="resize" aria-label="Resize"></button>
+    </div>
+    <div class="separator"></div>
+    <div class="window-pane">
+
+      <!-- ══ SETUP ══ -->
+      <div id="screen-setup" class="screen active">
+        <div id="player-list"></div>
+        <div class="field-row" style="margin-top:8px; margin-bottom:12px;">
+          <button class="btn" id="add-player-btn" onclick="addPlayer()">+ Add Player</button>
+        </div>
+        <div class="field-row" style="justify-content:flex-end;">
+          <button class="btn btn-default" onclick="startGame()">Start Game</button>
+        </div>
+      </div>
+
+      <!-- ══ GAME ══ -->
+      <div id="screen-game" class="screen">
+        <div class="game-header">
+          <b id="round-label"></b>
+          <button class="btn" onclick="newGame()">New Game</button>
+        </div>
+        <div class="table-wrap" id="score-table-wrap"></div>
+        <div class="field-row" style="justify-content:flex-end;">
+          <button class="btn btn-default" onclick="startRound()">Score Round →</button>
+        </div>
+      </div>
+
+      <!-- ══ WINNER ══ -->
+      <div id="screen-winner" class="screen">
+        <div class="winner-wrap">
+          <div class="winner-trophy">🏆</div>
+          <div class="winner-heading">Winner</div>
+          <div class="winner-name" id="winner-name"></div>
+          <div class="winner-score" id="winner-score"></div>
+          <button class="btn btn-default" onclick="resetGame()">New Game</button>
+        </div>
+      </div>
+
+      <!-- ══ SCORING ══ -->
+      <div id="screen-scoring" class="screen">
+        <div class="scoring-header">
+          <span style="font-size:12px; font-weight:bold;" id="scoring-round-label"></span>
+          <span style="font-size:11px;" id="scoring-progress"></span>
+        </div>
+        <div class="scoring-name" id="scoring-player-name"></div>
+
+        <div class="card-grid" id="card-grid"></div>
+
+        <div id="flip7-alert" class="flip7-alert" style="display:none"></div>
+
+        <hr class="section-sep">
+
+        <div class="bonus-label">Bonus Cards</div>
+        <div class="bonus-grid">
+          <button class="btn bonus-btn" id="bonus-2x"  onclick="toggleBonus('2x')">2×</button>
+          <button class="btn bonus-btn" id="bonus-p2"  onclick="toggleBonus('+2')">+2</button>
+          <button class="btn bonus-btn" id="bonus-p4"  onclick="toggleBonus('+4')">+4</button>
+          <button class="btn bonus-btn" id="bonus-p6"  onclick="toggleBonus('+6')">+6</button>
+          <button class="btn bonus-btn" id="bonus-p8"  onclick="toggleBonus('+8')">+8</button>
+          <button class="btn bonus-btn" id="bonus-p10" onclick="toggleBonus('+10')">+10</button>
+        </div>
+
+        <hr class="section-sep">
+
+        <div id="score-math" class="score-math"></div>
+
+        <div class="score-row">
+          <span class="score-row-label">Calculated</span>
+          <div id="calc-display" class="calc-display">0</div>
+        </div>
+
+        <div class="score-row">
+          <span class="score-row-label">Override</span>
+          <input id="manual-override" type="number" min="0" placeholder="—" inputmode="numeric" oninput="onOverrideInput()">
+        </div>
+
+        <hr class="section-sep">
+
+        <div class="field-row" style="justify-content:space-between;">
+          <button class="btn" onclick="clearAll()">Clear</button>
+          <button class="btn" onclick="bustPlayer()">Bust (0)</button>
+          <button class="btn btn-default" onclick="confirmScore()">Confirm →</button>
+        </div>
+
+        <hr class="section-sep">
+        <div class="table-wrap" id="scoring-scoreboard"></div>
+      </div>
+
+    </div><!-- /.window-pane -->
+  </div><!-- /.window -->
+
+<script>
+  // ── State ──────────────────────────────────────────────
+  let players       = [];
+  let roundScores   = [];
+  let currentRound  = 0;
+  let scoringIndex  = 0;
+  let roundInProgress = [];
+  let selectedCards = [];
+
+  let activeBonus2x     = false;
+  let activeFlatBonuses = new Set();
+
+  let currentTheme = 'classic';
+
+  // ── Theme ──────────────────────────────────────────────
+  function setTheme(name) {
+    const systemCss = document.getElementById('systemcss');
+    const themeCss  = document.getElementById('theme-css');
+    const toggleBtn = document.getElementById('theme-toggle-btn');
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+
+    currentTheme = name;
+
+    if (name === 'unicorn') {
+      systemCss.disabled = true;
+      themeCss.href = 'theme-unicorn.css';
+      toggleBtn.textContent = '🖥️';
+      themeColor.content = '#0a0018';
+      document.getElementById('flip7-alert').innerHTML =
+        '🦄 Flip 7 Bonus <span style="color:#fff">!</span><span style="color:#ffe000">!</span><span style="color:#fff">!</span><span style="color:#ffe000">!</span><span style="color:#fff">!</span><span style="color:#ffe000">!</span><span style="color:#fff">!</span>';
+    } else {
+      systemCss.disabled = false;
+      themeCss.href = 'theme-classic.css';
+      toggleBtn.textContent = '🦄';
+      themeColor.content = '#000000';
+      document.getElementById('flip7-alert').innerHTML =
+        'Flip 7 Bonus <span style="color:#cc0000">!</span><span style="color:#cc6600">!</span><span style="color:#aaaa00">!</span><span style="color:#006600">!</span><span style="color:#0044cc">!</span><span style="color:#4400cc">!</span><span style="color:#880088">!</span>';
+    }
+
+    localStorage.setItem('flip7-theme', name);
+  }
+
+  function cycleTheme() {
+    setTheme(currentTheme === 'classic' ? 'unicorn' : 'classic');
+  }
+
+  // ── Init ───────────────────────────────────────────────
+  function init() {
+    const saved = localStorage.getItem('flip7-theme') || 'classic';
+    setTheme(saved);
+    addPlayer();
+    addPlayer();
+  }
+
+  // ── Setup ──────────────────────────────────────────────
+  function addPlayer() {
+    if (players.length >= 12) return;
+    players.push({ name: '' });
+    renderSetup();
+    const inputs = document.querySelectorAll('.player-row input');
+    inputs[inputs.length - 1].focus();
+  }
+
+  function removePlayer(i) {
+    if (players.length <= 1) return;
+    players.splice(i, 1);
+    renderSetup();
+  }
+
+  function renderSetup() {
+    document.getElementById('player-list').innerHTML = players.map((p, i) => `
+      <div class="player-row">
+        <input
+          type="text"
+          placeholder="Player ${i + 1}"
+          value="${escHtml(p.name)}"
+          oninput="players[${i}].name = this.value"
+          onkeydown="if(event.key==='Enter'){ event.preventDefault(); ${i < 11 ? 'addPlayer()' : "document.querySelector('.btn-default').click()"}; }"
+        >
+        ${players.length > 1 ? `<button class="btn" onclick="removePlayer(${i})">✕</button>` : ''}
+      </div>
+    `).join('');
+
+    document.getElementById('add-player-btn').disabled = players.length >= 12;
+  }
+
+  function startGame() {
+    document.querySelectorAll('.player-row input').forEach((el, i) => {
+      if (players[i]) players[i].name = el.value;
+    });
+    const named = players.filter(p => p.name.trim() !== '');
+    if (named.length === 0) { alert('Enter at least one player name.'); return; }
+    players = named;
+    roundScores  = [];
+    currentRound = 0;
+    showScreen('game');
+    renderGame();
+  }
+
+  // ── Game / Score Table ─────────────────────────────────
+  function renderGame() {
+    document.getElementById('round-label').textContent =
+      currentRound === 0 ? 'Scoreboard' : `Round ${currentRound} complete`;
+
+    const totals = players.map((_, pi) =>
+      roundScores.reduce((sum, round) => sum + (round[pi] ?? 0), 0)
+    );
+
+    const roundHeaders = Array.from({ length: currentRound }, (_, r) => `<th>R${r + 1}</th>`).join('');
+
+    const rows = players.map((p, pi) => {
+      const roundCells = roundScores.map((round, r) =>
+        `<td class="editable-score" id="cell-${r}-${pi}" onclick="editScore(${r},${pi})">${round[pi] ?? 0}</td>`
+      ).join('');
+      return `<tr>
+        <td>${escHtml(p.name)}</td>
+        ${roundCells}
+        <td class="col-total">${totals[pi]}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('score-table-wrap').innerHTML = `
+      <table>
+        <thead><tr><th>Player</th>${roundHeaders}<th>Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function editScore(r, pi) {
+    const current = roundScores[r][pi] ?? 0;
+    const td = document.getElementById(`cell-${r}-${pi}`);
+    if (!td) return;
+    td.innerHTML = `<input type="number" inputmode="numeric" value="${current}"
+      onblur="saveScore(${r},${pi},this.value)"
+      onkeydown="if(event.key==='Enter')this.blur(); if(event.key==='Escape')renderGame();">`;
+    const inp = td.querySelector('input');
+    inp.focus();
+    inp.select();
+  }
+
+  function saveScore(r, pi, value) {
+    const val = parseInt(value, 10);
+    roundScores[r][pi] = isNaN(val) || val < 0 ? 0 : val;
+    renderGame();
+  }
+
+  // ── Round ──────────────────────────────────────────────
+  function startRound() {
+    currentRound++;
+    roundInProgress = [];
+    scoringIndex = 0;
+    showScreen('scoring');
+    renderScoring();
+  }
+
+  // ── Scoring ────────────────────────────────────────────
+  function renderScoring() {
+    document.getElementById('scoring-round-label').textContent = `Round ${currentRound}`;
+    document.getElementById('scoring-progress').textContent = `${scoringIndex + 1} of ${players.length}`;
+    document.getElementById('scoring-player-name').textContent = players[scoringIndex].name;
+    renderScoringScoreboard();
+
+    selectedCards = [];
+    resetBonuses();
+    buildCardGrid();
+    clearOverride();
+    updateFlip7Alert();
+  }
+
+  function renderScoringScoreboard() {
+    const totals = players.map((_, pi) =>
+      roundScores.reduce((sum, round) => sum + (round[pi] ?? 0), 0)
+    );
+    const roundHeaders = Array.from({ length: currentRound - 1 }, (_, r) => `<th>R${r + 1}</th>`).join('');
+    const rows = players.map((p, pi) => {
+      const roundCells = roundScores.map(round => `<td>${round[pi] ?? 0}</td>`).join('');
+      const isActive = pi === scoringIndex;
+      const inProgressScore = pi < roundInProgress.length ? roundInProgress[pi] : null;
+      const currentCell = inProgressScore !== null
+        ? `<td style="font-style:italic;">${inProgressScore}</td>`
+        : `<td style="opacity:0.4;">—</td>`;
+      return `<tr${isActive ? ' style="font-weight:bold;"' : ''}>
+        <td>${escHtml(p.name)}${isActive ? ' ◀' : ''}</td>
+        ${roundCells}
+        ${currentCell}
+        <td class="col-total">${totals[pi] + (inProgressScore ?? 0)}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('scoring-scoreboard').innerHTML = `
+      <table>
+        <thead><tr><th>Player</th>${roundHeaders}<th>R${currentRound}</th><th>Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function buildCardGrid() {
+    document.getElementById('card-grid').innerHTML =
+      Array.from({ length: 13 }, (_, i) =>
+        `<button class="btn card-btn" id="card-${i}" onclick="toggleCard(${i})">${i}</button>`
+      ).join('');
+  }
+
+  function toggleCard(val) {
+    const idx = selectedCards.indexOf(val);
+    const btn = document.getElementById(`card-${val}`);
+    if (idx === -1) { selectedCards.push(val);    btn.classList.add('selected'); }
+    else            { selectedCards.splice(idx,1); btn.classList.remove('selected'); }
+    updateFlip7Alert();
+  }
+
+  function updateFlip7Alert() {
+    const hasFlip7 = selectedCards.length === 7;
+    document.getElementById('flip7-alert').style.display = hasFlip7 ? 'block' : 'none';
+    recomputeDisplay();
+  }
+
+  // ── Score computation ──────────────────────────────────
+  function computeScore() {
+    const base            = selectedCards.reduce((s, v) => s + v, 0);
+    const afterMultiplier = activeBonus2x ? base * 2 : base;
+    const flatVals        = [];
+    activeFlatBonuses.forEach(k => flatVals.push(parseInt(k, 10)));
+    flatVals.sort((a, b) => a - b);
+    if (selectedCards.length === 7) flatVals.push(15);
+    return {
+      base, afterMultiplier, flatVals,
+      final: afterMultiplier + flatVals.reduce((s, v) => s + v, 0)
+    };
+  }
+
+  function recomputeDisplay() {
+    const { base, afterMultiplier, flatVals, final } = computeScore();
+    document.getElementById('calc-display').textContent = final;
+    document.getElementById('score-math').textContent   = buildMath(base, afterMultiplier, flatVals, final);
+  }
+
+  function buildMath(base, afterMultiplier, flatVals, final) {
+    const hasActivity = selectedCards.length > 0 || activeBonus2x || activeFlatBonuses.size > 0;
+    if (!hasActivity) return '';
+
+    let s;
+    if (selectedCards.length > 1) {
+      const sorted = [...selectedCards].sort((a, b) => a - b);
+      s = sorted.join(' + ') + `  =  ${base}`;
+    } else {
+      s = String(base);
+    }
+
+    if (activeBonus2x)       s += `  × 2  =  ${afterMultiplier}`;
+    if (flatVals.length > 0) s += '  ' + flatVals.map(v => `+ ${v}`).join('  ') + `  =  ${final}`;
+    return s;
+  }
+
+  // ── Override input ─────────────────────────────────────
+  function onOverrideInput() {
+    const input  = document.getElementById('manual-override');
+    const hasVal = input.value.trim() !== '';
+    input.classList.toggle('has-value', hasVal);
+    document.getElementById('calc-display').classList.toggle('dimmed', hasVal);
+  }
+
+  function clearOverride() {
+    const input = document.getElementById('manual-override');
+    input.value = '';
+    input.classList.remove('has-value');
+    document.getElementById('calc-display').classList.remove('dimmed');
+  }
+
+  // ── Bonus toggles ──────────────────────────────────────
+  function toggleBonus(key) {
+    const btnId = key === '2x' ? 'bonus-2x' : 'bonus-p' + key.slice(1);
+    const btn   = document.getElementById(btnId);
+    if (!btn) return;
+
+    if (key === '2x') {
+      activeBonus2x = !activeBonus2x;
+      btn.classList.toggle('active', activeBonus2x);
+    } else {
+      if (activeFlatBonuses.has(key)) { activeFlatBonuses.delete(key); btn.classList.remove('active'); }
+      else                            { activeFlatBonuses.add(key);    btn.classList.add('active'); }
+    }
+    recomputeDisplay();
+  }
+
+  function resetBonuses() {
+    activeBonus2x = false;
+    activeFlatBonuses.clear();
+    document.querySelectorAll('.bonus-btn').forEach(b => b.classList.remove('active'));
+  }
+
+  function clearAll() {
+    selectedCards = [];
+    resetBonuses();
+    buildCardGrid();
+    clearOverride();
+    updateFlip7Alert();
+  }
+
+  // ── Confirm / Bust ─────────────────────────────────────
+  function bustPlayer() {
+    recordScore(0);
+  }
+
+  function confirmScore() {
+    const overrideVal = document.getElementById('manual-override').value.trim();
+    let score;
+    if (overrideVal !== '') {
+      const parsed = parseInt(overrideVal, 10);
+      score = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    } else {
+      score = computeScore().final;
+    }
+    recordScore(score);
+  }
+
+  function recordScore(score) {
+    roundInProgress.push(score);
+    if (scoringIndex < players.length - 1) {
+      scoringIndex++;
+      renderScoring();
+    } else {
+      roundScores.push([...roundInProgress]);
+      if (!checkWinner()) { showScreen('game'); renderGame(); }
+    }
+  }
+
+  // ── Win condition ──────────────────────────────────────
+  function checkWinner() {
+    const totals = players.map((_, pi) =>
+      roundScores.reduce((sum, round) => sum + (round[pi] ?? 0), 0)
+    );
+    const eligible = players
+      .map((p, i) => ({ name: p.name, total: totals[i] }))
+      .filter(p => p.total >= 200);
+
+    if (eligible.length === 0) return false;
+
+    const winner = eligible.reduce((best, p) => p.total > best.total ? p : best);
+    document.getElementById('winner-name').textContent  = winner.name;
+    document.getElementById('winner-score').textContent = `${winner.total} points`;
+    showScreen('winner');
+    return true;
+  }
+
+  // ── New Game ───────────────────────────────────────────
+  function newGame() {
+    if (!confirm('Start a new game? All scores will be cleared.')) return;
+    resetGame();
+  }
+
+  function resetGame() {
+    players      = [];
+    roundScores  = [];
+    currentRound = 0;
+    showScreen('setup');
+    renderSetup();
+    addPlayer();
+    addPlayer();
+  }
+
+  // ── Utils ──────────────────────────────────────────────
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(el => {
+      el.classList.toggle('active', el.id === `screen-${name}`);
+    });
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+</script>
+</body>
+</html>

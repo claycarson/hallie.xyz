@@ -1,0 +1,448 @@
+/* ── Variables ── */
+:root {
+  --rainbow: linear-gradient(135deg, #ff0080, #ff6b00, #ffe000, #00e87a, #00c3ff, #a855f7, #ff0080);
+  --rainbow-bg-size: 300% 300%;
+  --panel-bg: rgba(18, 6, 45, 0.88);
+  --panel-border: rgba(168, 85, 247, 0.35);
+  --text: #f0e6ff;
+  --text-dim: rgba(220, 200, 255, 0.55);
+  --purple: #a855f7;
+  --gold: #fbbf24;
+}
+
+/* ── Animations ── */
+@keyframes rainbow-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; }
+  50%       { opacity: 0.9; }
+}
+
+@keyframes twinkle-slow {
+  0%, 100% { opacity: 0.1; }
+  50%       { opacity: 0.6; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(168,85,247,0.5), 0 0 20px rgba(244,114,182,0.3); }
+  50%       { box-shadow: 0 0 16px rgba(168,85,247,0.8), 0 0 40px rgba(244,114,182,0.5), 0 0 60px rgba(34,211,238,0.2); }
+}
+
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  min-height: 100%;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: var(--text);
+  background: radial-gradient(ellipse at 25% 15%, #2d0d6b 0%, #0a0018 55%, #14002e 100%);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: max(16px, env(safe-area-inset-top))
+           max(0px,  env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom))
+           max(0px,  env(safe-area-inset-left));
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+@media (max-width: 520px) {
+  body { padding: 0; align-items: stretch; }
+}
+
+/* ── Stars ── */
+.stars-bg {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.stars-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.95) 1px, transparent 1px),
+    radial-gradient(circle, rgba(255,255,255,0.75) 1px, transparent 1px),
+    radial-gradient(circle, rgba(255,255,255,0.55) 1px, transparent 1px);
+  background-size: 97px 83px, 71px 59px, 113px 107px;
+  background-position: 8px 12px, 45px 33px, 22px 67px;
+  animation: twinkle 3.5s ease-in-out infinite;
+}
+
+.stars-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle, rgba(200,180,255,0.8) 1px, transparent 1px),
+    radial-gradient(circle, rgba(255,200,255,0.6) 1px, transparent 1px),
+    radial-gradient(circle, rgba(180,220,255,0.7) 1px, transparent 1px);
+  background-size: 61px 79px, 137px 103px, 53px 89px;
+  background-position: 30px 55px, 10px 20px, 70px 40px;
+  animation: twinkle-slow 5s ease-in-out 1.5s infinite;
+}
+
+/* ── Window → Panel ── */
+.window {
+  position: relative;
+  z-index: 1;
+  background: var(--panel-bg) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1.5px solid var(--panel-border) !important;
+  border-radius: 24px !important;
+  overflow: hidden;
+  margin: 20px 0;
+  animation: glow-pulse 4s ease-in-out infinite;
+  box-shadow: none !important;
+}
+
+@media (max-width: 520px) {
+  .window {
+    max-width: 100% !important;
+    border-radius: 0 !important;
+    margin: 0;
+    min-height: 100dvh;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+  }
+}
+
+/* ── Title bar → Rainbow header ── */
+.title-bar {
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 5s ease infinite !important;
+  padding: 18px 20px 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  border-bottom: none !important;
+}
+
+.title-bar .close,
+.title-bar .resize {
+  display: none !important;
+}
+
+.title-bar .title {
+  font-family: 'Fredoka One', cursive !important;
+  font-size: 30px !important;
+  color: #fff !important;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 30px rgba(255,255,255,0.4);
+  letter-spacing: 1px;
+  animation: float 3s ease-in-out infinite;
+  text-align: center;
+  flex: unset !important;
+}
+
+.header-sparkle {
+  display: inline !important;
+  font-size: 22px;
+  animation: float 3s ease-in-out 0.5s infinite;
+}
+
+/* ── Separator hidden ── */
+.separator { display: none !important; }
+
+/* ── Window pane → Panel content ── */
+.window-pane {
+  padding: 16px !important;
+  background: transparent !important;
+  border: none !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Theme toggle ── */
+#theme-toggle-btn {
+  background: rgba(255,255,255,0.2) !important;
+  border: 1.5px solid rgba(255,255,255,0.4) !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  font-size: 14px;
+  padding: 3px 7px !important;
+  cursor: pointer;
+  min-height: unset !important;
+  line-height: 1;
+}
+
+/* ── Buttons ── */
+button {
+  font-family: 'Nunito', system-ui, sans-serif !important;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 10px;
+  font-size: 14px;
+  min-height: 38px;
+  touch-action: manipulation;
+  transition: transform 0.1s, opacity 0.1s, box-shadow 0.2s;
+}
+button:active { transform: scale(0.95); }
+button:disabled { opacity: 0.35; cursor: default; }
+
+.btn {
+  background: rgba(255,255,255,0.08) !important;
+  color: var(--text) !important;
+  border: 1.5px solid rgba(168,85,247,0.4) !important;
+  box-shadow: none !important;
+}
+.btn:hover { background: rgba(255,255,255,0.13) !important; }
+
+.btn-default {
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 4s ease infinite;
+  color: #fff !important;
+  border: none !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  padding: 10px 20px !important;
+  box-shadow: 0 0 16px rgba(168,85,247,0.5), 0 4px 12px rgba(0,0,0,0.3) !important;
+}
+.btn-default:hover { box-shadow: 0 0 28px rgba(168,85,247,0.8), 0 4px 16px rgba(0,0,0,0.3) !important; }
+
+/* ── Inputs ── */
+input[type="text"],
+input[type="number"] {
+  background: rgba(255,255,255,0.07) !important;
+  border: 1.5px solid rgba(168,85,247,0.4) !important;
+  border-radius: 10px !important;
+  color: var(--text) !important;
+  font-family: 'Nunito', system-ui, sans-serif !important;
+  font-size: 16px !important;
+  padding: 9px 12px !important;
+  outline: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input[type="text"]:focus,
+input[type="number"]:focus {
+  border-color: var(--purple) !important;
+  box-shadow: 0 0 0 3px rgba(168,85,247,0.25) !important;
+}
+input::placeholder { color: var(--text-dim); }
+
+/* ── Setup ── */
+.player-row { gap: 8px !important; margin-bottom: 8px !important; }
+
+/* ── Score table ── */
+.table-wrap {
+  border-radius: 12px;
+  border: 1px solid rgba(168,85,247,0.3);
+}
+
+table { font-size: 13px; }
+
+th {
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 5s ease infinite;
+  color: #fff !important;
+  padding: 8px 10px;
+  font-weight: 800;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  border: none !important;
+}
+
+td {
+  padding: 7px 10px !important;
+  border: none !important;
+  border-top: 1px solid rgba(168,85,247,0.15) !important;
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--text);
+}
+td:first-child { font-weight: 700; }
+tr:nth-child(even) td { background: rgba(168,85,247,0.07) !important; }
+
+.col-total { font-weight: 800 !important; color: var(--gold) !important; }
+
+.editable-score:hover { background: rgba(168,85,247,0.2) !important; color: var(--purple) !important; }
+.editable-score input {
+  width: 44px;
+  background: transparent !important;
+  color: var(--text) !important;
+  outline: 2px solid var(--purple) !important;
+  border-radius: 4px;
+}
+
+/* ── Round label ── */
+#round-label {
+  font-size: 16px;
+  font-weight: 800;
+  background: var(--rainbow);
+  background-size: var(--rainbow-bg-size);
+  animation: rainbow-shift 5s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Card buttons ── */
+.card-btn {
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: var(--text) !important;
+  border: 1.5px solid rgba(168,85,247,0.35) !important;
+  border-radius: 10px !important;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.card-btn:active { transform: scale(0.9) !important; }
+
+.card-btn.selected {
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 3s ease infinite;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 14px rgba(168,85,247,0.7), 0 0 28px rgba(244,114,182,0.4) !important;
+}
+
+/* ── Bonus buttons ── */
+.bonus-label {
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  color: var(--text-dim);
+}
+
+.bonus-btn {
+  background: rgba(255,255,255,0.06) !important;
+  color: var(--text) !important;
+  border: 1.5px solid rgba(168,85,247,0.35) !important;
+  font-size: 13px;
+}
+
+.bonus-btn.active {
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 3s ease infinite;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 12px rgba(168,85,247,0.6);
+}
+
+/* ── Math formula ── */
+.score-math {
+  font-weight: 600 !important;
+  background: var(--rainbow);
+  background-size: var(--rainbow-bg-size);
+  animation: rainbow-shift 6s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Scoring name ── */
+.scoring-name {
+  font-family: 'Fredoka One', cursive !important;
+  font-size: 26px !important;
+  margin-bottom: 14px !important;
+  background: var(--rainbow);
+  background-size: var(--rainbow-bg-size);
+  animation: rainbow-shift 5s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Flip 7 alert ── */
+.flip7-alert {
+  font-weight: 800 !important;
+  font-size: 15px !important;
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  border: none !important;
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 2s ease infinite;
+  color: #fff !important;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  box-shadow: 0 0 20px rgba(168,85,247,0.5);
+}
+
+/* ── Section separators ── */
+.section-sep {
+  border-top: 1px solid rgba(168,85,247,0.25) !important;
+  margin: 12px 0 !important;
+}
+
+/* ── Score rows ── */
+.score-row-label {
+  font-weight: 700 !important;
+  width: 72px !important;
+  color: var(--text-dim) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.calc-display {
+  flex: 1;
+  border: 1.5px solid rgba(168,85,247,0.4) !important;
+  border-radius: 10px !important;
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  background: rgba(168,85,247,0.08) !important;
+  color: var(--text) !important;
+}
+
+#manual-override {
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  padding: 8px 12px !important;
+}
+#manual-override.has-value {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 12px rgba(251,191,36,0.4) !important;
+}
+
+/* ── Scoring actions ── */
+.scoring-actions { display: flex; gap: 8px; }
+.scoring-actions .btn-default { flex: 1; }
+
+/* ── Winner ── */
+.winner-wrap { padding: 32px 0 !important; }
+.winner-trophy {
+  font-size: 72px !important;
+  display: block;
+  animation: float 2s ease-in-out infinite;
+  margin-bottom: 12px !important;
+}
+.winner-heading {
+  font-size: 12px !important;
+  letter-spacing: 0.1em !important;
+  color: var(--text-dim) !important;
+  margin-bottom: 6px !important;
+}
+.winner-name {
+  font-family: 'Fredoka One', cursive !important;
+  font-size: 36px !important;
+  background: var(--rainbow) !important;
+  background-size: var(--rainbow-bg-size) !important;
+  animation: rainbow-shift 3s ease infinite;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  margin-bottom: 6px !important;
+}
+.winner-score {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: var(--gold) !important;
+  margin-bottom: 28px !important;
+}

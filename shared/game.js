@@ -4,12 +4,13 @@
    (Hub page uses:     <script src="shared/game.js"></script>)
 
    Exposes a global `Hallie` object with:
-     Hallie.addSession(n)      — add/subtract session tokens, updates #token-count
-     Hallie.getSession()       — current session token count
-     Hallie.getLifetime()      — all-time tokens earned (from localStorage)
-     Hallie.confetti()         — launch confetti (requires #confetti-layer in HTML)
-     Hallie.initSecretTap(el)  — wire up 5-tap secret on element (requires
-                                  #secret-modal, #lifetime-val, #sm-close in HTML)
+     Hallie.addSession(n)         — add/subtract session tokens, updates #token-count
+     Hallie.getSession()          — current session token count
+     Hallie.getLifetime()         — all-time tokens earned (from localStorage)
+     Hallie.confetti()            — launch confetti (requires #confetti-layer in HTML)
+     Hallie.flashMessage(text, ms)— show a brief centered message (requires #flash-msg in HTML)
+     Hallie.initSecretTap(el)     — wire up 5-tap secret on element (requires
+                                    #secret-modal, #lifetime-val, #sm-close in HTML)
    ============================================================ */
 
 const Hallie = (() => {
@@ -76,5 +77,13 @@ const Hallie = (() => {
     });
   }
 
-  return { addSession, getSession, getLifetime, confetti, initSecretTap };
+  function flashMessage(text, ms = 1200) {
+    const el = document.getElementById('flash-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  return { addSession, getSession, getLifetime, confetti, flashMessage, initSecretTap };
 })();

@@ -65,6 +65,46 @@ body {
   flex-shrink: 0;
 }
 
+/* Variant for full-screen immersive games (flashlight, etc.)
+   Floats over the game content with a frosted dark background */
+.topbar-dark {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  max-width: 100%;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 16px;
+}
+
+/* ── Flash Message (brief floating feedback) ── */
+.flash-msg {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  background: rgba(0, 0, 0, 0.75);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius-lg);
+  padding: 16px 32px;
+  font-size: clamp(1.4rem, 5vw, 2.2rem);
+  color: var(--gold);
+  text-align: center;
+  pointer-events: none;
+  z-index: 80;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+.flash-msg.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 .token-display {
   background: rgba(255,215,0,0.14);
   border: 2px solid var(--gold);
