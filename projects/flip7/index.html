@@ -6,12 +6,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Flip 7">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#0a0018">
   <title>Flip 7</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link id="systemcss" rel="stylesheet" href="https://unpkg.com/@sakun/system.css">
-  <link id="theme-css" rel="stylesheet" href="theme-classic.css">
+  <link id="theme-css" rel="stylesheet" href="theme-unicorn.css">
   <style>
     /* ── Shared base ── */
     html {
@@ -214,7 +214,7 @@
   let activeBonus2x     = false;
   let activeFlatBonuses = new Set();
 
-  let currentTheme = 'classic';
+  let currentTheme = 'unicorn';
 
   // ── Theme ──────────────────────────────────────────────
   function setTheme(name) {
@@ -250,7 +250,7 @@
 
   // ── Init ───────────────────────────────────────────────
   function init() {
-    const saved = localStorage.getItem('flip7-theme') || 'classic';
+    const saved = localStorage.getItem('flip7-theme') || 'unicorn';
     setTheme(saved);
     addPlayer();
     addPlayer();
