@@ -362,6 +362,21 @@ body {
 }
 .wiggle { animation: sad-wiggle 0.55s ease; }
 
+@keyframes rainbow-sweep {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.rainbow-text {
+  background: linear-gradient(90deg,
+    #ff85e1, #d770f5, #c084fc, #a855f7,
+    #f472b6, #e879f9, #c026d3, #ff85e1);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: rainbow-sweep 3s linear infinite;
+}
+
 /* ── Hub Page ── */
 .hub-header {
   text-align: center;

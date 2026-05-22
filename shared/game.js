@@ -15,7 +15,7 @@
 
 const Hallie = (() => {
   const STORE_KEY = 'hallie_lifetime_tokens';
-  let _session = 0;
+  let _session = parseInt(sessionStorage.getItem('hallie_session_tokens') || '0', 10);
   let _taps = [];
 
   function getLifetime() {
@@ -28,6 +28,7 @@ const Hallie = (() => {
 
   function addSession(n) {
     _session = Math.max(0, _session + n);
+    sessionStorage.setItem('hallie_session_tokens', _session);
     if (n > 0) {
       localStorage.setItem(STORE_KEY, getLifetime() + n);
     }
@@ -86,4 +87,9 @@ const Hallie = (() => {
   }
 
   return { addSession, getSession, getLifetime, confetti, flashMessage, initSecretTap };
+})();
+
+(function() {
+  const el = document.getElementById('token-count');
+  if (el) el.textContent = Hallie.getSession();
 })();

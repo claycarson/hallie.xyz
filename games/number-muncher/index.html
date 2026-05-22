@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Number Muncher — Hallie's Games</title>
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+:root {
+  --cell: min(calc((100vw - 24px) / 10), calc((100vh - 380px) / 10), 68px);
+}
+
+/* ── Grid ── */
+#grid-wrapper {
+  border: 3px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  padding: 4px;
+  margin: 4px auto;
+  flex-shrink: 0;
+}
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell));
+  grid-template-rows: repeat(10, var(--cell));
+  gap: 2px;
+}
+
+.cell {
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  overflow: hidden;
+}
+
+.cell-number {
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #dde;
+  /* slightly smaller than letter cells to fit two digits comfortably */
+  font-size: calc(var(--cell) * 0.36);
+}
+
+.cell-obstacle {
+  background: rgba(0,0,0,0.25);
+  font-size: calc(var(--cell) * 0.60);
+}
+
+.cell-player {
+  background: rgba(76,255,140,0.22);
+  border: 2px solid #4cff8c;
+  z-index: 2;
+}
+
+.player-emoji {
+  font-size: calc(var(--cell) * 0.52);
+  line-height: 1;
+}
+
+.under-char {
+  font-size: calc(var(--cell) * 0.22);
+  color: #ffd700;
+  line-height: 1;
+  margin-top: -2px;
+}
+
+.cell-empty {
+  background: rgba(255,255,255,0.035);
+}
+
+/* ── Problem Bar ── */
+#problem-bar {
+  width: 100%;
+  max-width: calc(var(--cell) * 10 + 32px);
+  padding: 8px 10px 4px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+#problem-label {
+  font-size: clamp(0.7rem, 2.5vw, 0.85rem);
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* Reuse shared .wl tiles but tweak font size for numbers + operators */
+#equation .wl {
+  font-size: clamp(1rem, 4.5vw, 1.65rem);
+}
+
+/* Narrow boxes for operator and equals sign */
+#eq-op, #eq-eq {
+  width: clamp(28px, 7vw, 40px);
+  color: rgba(255,255,255,0.50);
+  border-color: rgba(255,255,255,0.15);
+  background: transparent;
+}
+
+/* Make the known numbers look "given" */
+#eq-a, #eq-b {
+  color: var(--blue);
+  border-color: var(--blue);
+  background: rgba(100,200,255,0.10);
+}
+
+#hint-bar {
+  margin-top: 6px;
+  font-size: clamp(0.6rem, 2vw, 0.75rem);
+  color: rgba(255,255,255,0.3);
+}
+
+#penalty-warning {
+  display: none;
+  margin-top: 5px;
+  background: rgba(255,70,70,0.18);
+  border: 1px solid rgba(255,70,70,0.5);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: clamp(0.65rem, 2vw, 0.8rem);
+  color: #ff9090;
+}
+#penalty-warning.show { display: block; }
+
+@media (orientation: landscape) and (hover: none) {
+  :root {
+    --cell: min(calc((100vw - 216px) / 10), calc((100vh - 170px) / 10), 60px);
+  }
+  .dpad-area {
+    position: fixed;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 8px;
+    z-index: 5;
+    background: rgba(13, 27, 42, 0.85);
+    border-radius: 16px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    ✏️ Problems: <span id="problems-count">0</span>
+  </div>
+  <a href="../" class="back-btn">← Games</a>
+</div>
+
+<!-- GRID -->
+<div id="grid-wrapper">
+  <div id="grid"></div>
+</div>
+
+<!-- PROBLEM BAR -->
+<div id="problem-bar">
+  <div id="problem-label">Find the answer:</div>
+  <div class="word-letters" id="equation">
+    <div class="wl" id="eq-a"></div>
+    <div class="wl" id="eq-op"></div>
+    <div class="wl" id="eq-b"></div>
+    <div class="wl" id="eq-eq">=</div>
+    <div class="wl next" id="eq-ans">?</div>
+  </div>
+  <div id="hint-bar">Arrow keys or D-pad to move &nbsp;•&nbsp; SPACE or EAT to munch a number</div>
+  <div id="penalty-warning">⚠️ Wrong answers cost a token now — be careful!</div>
+</div>
+
+<!-- D-PAD -->
+<div class="dpad-area">
+  <div class="dpad">
+    <div class="db-empty"></div>
+    <button class="db" id="db-up"    aria-label="Up">↑</button>
+    <div class="db-empty"></div>
+
+    <button class="db" id="db-left"  aria-label="Left">←</button>
+    <button class="db db-eat" id="db-eat" aria-label="Eat number">EAT</button>
+    <button class="db" id="db-right" aria-label="Right">→</button>
+
+    <div class="db-empty"></div>
+    <button class="db" id="db-down"  aria-label="Down">↓</button>
+    <div class="db-empty"></div>
+  </div>
+</div>
+
+<!-- FLASH MESSAGE -->
+<div class="flash-msg" id="flash-msg"></div>
+
+<!-- SECRET MODAL -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- CONFETTI -->
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────
+const N         = 10;
+const CELLS     = N * N;
+const OBS_COUNT = 18;
+const OBS_EMOJI = ['👾','🧱','🌵','🪨','🦕','🤖','👻','🌊','🌴','🐉'];
+const PLAYER    = '🐸';
+const SAD       = '😞';
+
+// ─────────────────────────────────────────────
+// PROBLEM GENERATION
+// ─────────────────────────────────────────────
+const ri = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+function generateProblem() {
+  const r     = Math.random();
+  const isAdd = Math.random() < 0.60;
+  let a, b;
+
+  if (r < 0.55) {
+    // Tiny — single digits, answer ≤ 10
+    if (isAdd) { a = ri(1,5); b = ri(1, Math.min(5, 10 - a)); }
+    else        { a = ri(1,9); b = ri(0, a); }
+
+  } else if (r < 0.80) {
+    // Small — answer up to ~20
+    if (isAdd) { a = ri(3,12); b = ri(1, Math.min(9, 20 - a)); }
+    else        { a = ri(5,20); b = ri(1, a); }
+
+  } else if (r < 0.95) {
+    // Medium — answer up to ~50
+    if (isAdd) { a = ri(10,40); b = ri(1, Math.min(15, 50 - a)); }
+    else        { a = ri(15,50); b = ri(1, Math.min(20, a)); }
+
+  } else {
+    // Larger — answer up to 99
+    if (isAdd) { a = ri(20,70); b = ri(5, Math.min(30, 99 - a)); }
+    else        { a = ri(30,99); b = ri(5, Math.min(40, a)); }
+  }
+
+  const op     = isAdd ? '+' : '-';
+  const answer = isAdd ? a + b : a - b;
+
+  // Safety net: retry if out of range (rare edge case)
+  if (answer < 0 || answer > 99) return generateProblem();
+
+  return { a, op, b, answer };
+}
+
+// ─────────────────────────────────────────────
+// DISTRACTOR GENERATION
+// ─────────────────────────────────────────────
+function generateDistractors(answer) {
+  const pool = new Set();
+
+  // Close distractors — most plausible wrong answers
+  for (const d of [-5,-4,-3,-2,-1,1,2,3,4,5]) {
+    const v = answer + d;
+    if (v >= 0 && v <= 99) pool.add(v);
+  }
+  for (const d of [-10,-7,7,10,15,-15]) {
+    const v = answer + d;
+    if (v >= 0 && v <= 99) pool.add(v);
+  }
+
+  // Fill with numbers in a nearby range
+  const lo = Math.max(0, answer - 25);
+  const hi = Math.min(99, answer + 25);
+  let tries = 0;
+  while (pool.size < 35 && tries++ < 300) {
+    const v = ri(lo, hi);
+    if (v !== answer) pool.add(v);
+  }
+
+  // Top up with fully random numbers
+  while (pool.size < 60) {
+    const v = ri(0, 99);
+    if (v !== answer) pool.add(v);
+  }
+
+  return [...pool];
+}
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let grid = [];
+let pRow = 4, pCol = 4;
+let problem = null;
+let problemsCompleted = 0;
+let phase = 'playing';    // 'playing' | 'pause'
+let sadActive = false;
+let sadTimer = null;
+
+// ─────────────────────────────────────────────
+// GRID BUILDING
+// ─────────────────────────────────────────────
+function buildGrid() {
+  const { answer } = problem;
+  grid = Array.from({ length: CELLS }, () => ({ type: 'empty' }));
+  const pPos = pRow * N + pCol;
+
+  // Obstacles
+  const reserved = new Set([pPos]);
+  let attempts = 0;
+  while (reserved.size < OBS_COUNT + 1 && attempts++ < 9999) {
+    const pos = ri(0, CELLS - 1);
+    if (!reserved.has(pos)) {
+      reserved.add(pos);
+      grid[pos] = { type: 'obstacle', emoji: OBS_EMOJI[ri(0, OBS_EMOJI.length - 1)] };
+    }
+  }
+
+  // Guarantee one correct-answer cell
+  let ansPos, tries = 0;
+  do { ansPos = ri(0, CELLS - 1); tries++; }
+  while ((grid[ansPos].type !== 'empty' || ansPos === pPos) && tries < 9999);
+  grid[ansPos] = { type: 'number', value: answer };
+
+  // Fill remaining empty cells
+  const distractors = generateDistractors(answer);
+  let di = 0;
+  const lo = Math.max(0, answer - 20);
+  const hi = Math.min(99, answer + 20);
+
+  for (let i = 0; i < CELLS; i++) {
+    if (grid[i].type === 'empty' && i !== pPos) {
+      // 60% from distractor pool, 40% from nearby-random range
+      const value = (Math.random() < 0.60 && di < distractors.length)
+        ? distractors[di++]
+        : ri(lo, hi);
+      grid[i] = { type: 'number', value };
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────
+function render() {
+  let html = '';
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const idx  = r * N + c;
+      const cell = grid[idx];
+      const isPlayer = r === pRow && c === pCol;
+
+      if (isPlayer) {
+        const under = cell.type === 'number' ? cell.value : '';
+        html += `<div class="cell cell-player">` +
+                `<span class="player-emoji">${sadActive ? SAD : PLAYER}</span>` +
+                (under !== '' ? `<span class="under-char">${under}</span>` : '') +
+                `</div>`;
+      } else if (cell.type === 'obstacle') {
+        html += `<div class="cell cell-obstacle">${cell.emoji}</div>`;
+      } else if (cell.type === 'number') {
+        html += `<div class="cell cell-number">${cell.value}</div>`;
+      } else {
+        html += `<div class="cell cell-empty"></div>`;
+      }
+    }
+  }
+  document.getElementById('grid').innerHTML = html;
+}
+
+function renderEquation() {
+  document.getElementById('eq-a').textContent  = problem.a;
+  document.getElementById('eq-op').textContent = problem.op;
+  document.getElementById('eq-b').textContent  = problem.b;
+  document.getElementById('eq-ans').textContent = '?';
+  document.getElementById('eq-ans').classList.add('next');
+  document.getElementById('penalty-warning').classList.toggle('show', problemsCompleted >= 10);
+}
+
+function updateDisplay() {
+  document.getElementById('problems-count').textContent = problemsCompleted;
+}
+
+// ─────────────────────────────────────────────
+// MOVEMENT
+// ─────────────────────────────────────────────
+function move(dr, dc) {
+  if (phase !== 'playing') return;
+  const nr = pRow + dr, nc = pCol + dc;
+  if (nr < 0 || nr >= N || nc < 0 || nc >= N) return;
+  if (grid[nr * N + nc].type === 'obstacle') return;
+  pRow = nr; pCol = nc;
+  render();
+}
+
+// ─────────────────────────────────────────────
+// EAT / SELECT
+// ─────────────────────────────────────────────
+function eat() {
+  if (phase !== 'playing' || sadActive) return;
+  const idx  = pRow * N + pCol;
+  const cell = grid[idx];
+  if (cell.type !== 'number') return;
+
+  if (cell.value === problem.answer) {
+    correctAnswer();
+  } else {
+    wrongAnswer();
+  }
+}
+
+function correctAnswer() {
+  phase = 'pause';
+  grid[pRow * N + pCol] = { type: 'empty' };
+  problemsCompleted++;
+  Hallie.addSession(1);
+  Hallie.confetti();
+  Hallie.flashMessage(`${problem.a} ${problem.op} ${problem.b} = ${problem.answer} ✓`);
+  updateDisplay();
+  render();
+  setTimeout(nextProblem, 1600);
+}
+
+function wrongAnswer() {
+  if (sadActive) return;
+  if (problemsCompleted >= 10) Hallie.addSession(-1);
+
+  sadActive = true;
+  render();
+  document.querySelector('.cell-player')?.classList.add('wiggle');
+
+  clearTimeout(sadTimer);
+  sadTimer = setTimeout(() => { sadActive = false; render(); }, 900);
+}
+
+// ─────────────────────────────────────────────
+// NEXT PROBLEM
+// ─────────────────────────────────────────────
+function nextProblem() {
+  phase = 'playing';
+  sadActive = false;
+  problem = generateProblem();
+  pRow = 4; pCol = 4;
+  buildGrid();
+  render();
+  renderEquation();
+}
+
+// ─────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (phase !== 'playing') return;
+  switch (e.key) {
+    case 'ArrowUp':    e.preventDefault(); move(-1, 0); break;
+    case 'ArrowDown':  e.preventDefault(); move( 1, 0); break;
+    case 'ArrowLeft':  e.preventDefault(); move( 0,-1); break;
+    case 'ArrowRight': e.preventDefault(); move( 0, 1); break;
+    case ' ':          e.preventDefault(); eat();       break;
+    case 'w': case 'W': move(-1, 0); break;
+    case 's': case 'S': move( 1, 0); break;
+    case 'a': case 'A': move( 0,-1); break;
+    case 'd': case 'D': move( 0, 1); break;
+  }
+});
+
+(function setupDpad() {
+  const map = {
+    'db-up':    () => move(-1, 0),
+    'db-down':  () => move( 1, 0),
+    'db-left':  () => move( 0,-1),
+    'db-right': () => move( 0, 1),
+    'db-eat':   () => eat(),
+  };
+  for (const [id, fn] of Object.entries(map)) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('touchstart', e => { e.preventDefault(); btn.classList.add('pressed'); fn(); }, { passive: false });
+    btn.addEventListener('touchend',   e => { e.preventDefault(); btn.classList.remove('pressed'); }, { passive: false });
+    btn.addEventListener('mousedown',  e => { e.preventDefault(); fn(); });
+  }
+})();
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+Hallie.initSecretTap(document.getElementById('token-display'));
+problem = generateProblem();
+buildGrid();
+render();
+renderEquation();
+</script>
+</body>
+</html>

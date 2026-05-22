@@ -6,24 +6,31 @@
 <title>hallie.xyz</title>
 <link rel="stylesheet" href="shared/style.css">
 <style>
-  body { justify-content: center; padding-bottom: 40px; }
+  body {
+    justify-content: center;
+    padding-bottom: 40px;
+    background: radial-gradient(ellipse at center, #0f0a2e 0%, #050818 70%);
+  }
+
+  #stars-bg { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .star { position: absolute; background: #fff; border-radius: 50%; }
 
   .landing-title {
     font-size: clamp(2.4rem, 10vw, 4rem);
-    background: linear-gradient(135deg, var(--gold), var(--green), var(--blue));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
     text-align: center;
     margin-bottom: 6px;
     padding-top: 40px;
+    position: relative;
+    z-index: 1;
   }
 
   .landing-sub {
     font-size: clamp(0.9rem, 3vw, 1.1rem);
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.6);
     text-align: center;
     margin-bottom: 40px;
+    position: relative;
+    z-index: 1;
   }
 
   .nav-grid {
@@ -33,6 +40,8 @@
     width: 100%;
     max-width: 560px;
     padding: 0 20px;
+    position: relative;
+    z-index: 1;
   }
 
   .nav-card {
@@ -64,8 +73,10 @@
 </head>
 <body>
 
-<div class="landing-title">hallie.xyz</div>
-<div class="landing-sub">Games &amp; projects</div>
+<div id="stars-bg"></div>
+
+<div class="landing-title rainbow-text">hallie.xyz</div>
+<div class="landing-sub">🌈 Games &amp; Projects 🦄</div>
 
 <div class="nav-grid">
   <a href="games/" class="nav-card" style="--card-color: #4cff8c">
@@ -80,5 +91,16 @@
   </a>
 </div>
 
+<script>
+const bg = document.getElementById('stars-bg');
+for (let i = 0; i < 80; i++) {
+  const s = document.createElement('div');
+  s.className = 'star';
+  const sz = 1 + Math.random() * 2.5;
+  s.style.cssText = `left:${Math.random()*100}%;top:${Math.random()*100}%;`
+    + `width:${sz}px;height:${sz}px;opacity:${0.3 + Math.random()*0.7}`;
+  bg.appendChild(s);
+}
+</script>
 </body>
 </html>
