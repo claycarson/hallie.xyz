@@ -73,39 +73,6 @@
     100% { transform: translate(-50%, -120%) scale(0) rotate(45deg); opacity: 0; }
   }
 
-  /* ── Glowing eyes (visible above darkness when nearby) ── */
-  #monster-eyes {
-    position: fixed;
-    transform: translate(-50%, -50%);
-    z-index: 6;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  #monster-eyes.show { opacity: 1; }
-
-  #monster-eyes::before,
-  #monster-eyes::after {
-    content: '';
-    position: absolute;
-    width: clamp(10px, 2.5vmin, 16px);
-    height: clamp(10px, 2.5vmin, 16px);
-    border-radius: 50%;
-    background: #aaff44;
-    box-shadow: 0 0 8px 4px rgba(170,255,68,0.7), 0 0 20px 6px rgba(170,255,68,0.35);
-    animation: eye-pulse 1s ease-in-out infinite alternate;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-
-  #monster-eyes::before { left: clamp(-22px, -5vmin, -30px); }
-  #monster-eyes::after  { left: clamp(8px,  2vmin,  14px); }
-
-  @keyframes eye-pulse {
-    from { box-shadow: 0 0 8px 4px rgba(170,255,68,0.7), 0 0 20px 6px rgba(170,255,68,0.35); }
-    to   { box-shadow: 0 0 14px 7px rgba(170,255,68,0.9), 0 0 32px 10px rgba(170,255,68,0.5); }
-  }
 
   /* ── "Move your finger to search!" first-load hint ── */
   #search-hint {
@@ -137,14 +104,11 @@
   <div class="score-display">
     👾 Found: <span id="found-count">0</span>
   </div>
-  <a href="../../" class="back-btn">← Games</a>
+  <a href="../" class="back-btn">← Games</a>
 </div>
 
 <!-- MONSTER -->
 <div id="monster">👾</div>
-
-<!-- GLOWING EYES (above darkness) -->
-<div id="monster-eyes"></div>
 
 <!-- FLASHLIGHT CURSOR -->
 <div id="flashlight-cursor">🔦</div>
@@ -194,11 +158,10 @@ let foundCount = 0;
 let catching = false;
 let hintDismissed = false;
 
-const darkness        = document.getElementById('darkness');
-const monsterEl       = document.getElementById('monster');
-const eyesEl          = document.getElementById('monster-eyes');
-const foundCountEl    = document.getElementById('found-count');
-const hintEl          = document.getElementById('search-hint');
+const darkness         = document.getElementById('darkness');
+const monsterEl        = document.getElementById('monster');
+const foundCountEl     = document.getElementById('found-count');
+const hintEl           = document.getElementById('search-hint');
 const flashlightCursor = document.getElementById('flashlight-cursor');
 
 // ─────────────────────────────────────────────
@@ -207,7 +170,6 @@ const flashlightCursor = document.getElementById('flashlight-cursor');
 function spawnMonster() {
   catching = false;
   monsterEl.classList.remove('caught', 'wiggling');
-  eyesEl.classList.remove('show');
 
   // Pick a different emoji than the last one
   const current = monsterEl.textContent;
@@ -259,7 +221,6 @@ function updateLight(x, y) {
   const dist = Math.sqrt(dx * dx + dy * dy);
 
   const isNear = dist < NEAR_DIST;
-  eyesEl.classList.toggle('show', isNear);
   monsterEl.classList.toggle('wiggling', isNear);
 }
 
@@ -281,7 +242,6 @@ function tryClick(x, y) {
 
   monsterEl.classList.remove('wiggling');
   monsterEl.classList.add('caught');
-  eyesEl.classList.remove('show');
 
   Hallie.addSession(1);
   Hallie.confetti();

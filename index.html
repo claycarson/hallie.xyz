@@ -3,44 +3,82 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hallie's Games</title>
+<title>hallie.xyz</title>
 <link rel="stylesheet" href="shared/style.css">
 <style>
-  body { padding-bottom: 40px; }
+  body { justify-content: center; padding-bottom: 40px; }
+
+  .landing-title {
+    font-size: clamp(2.4rem, 10vw, 4rem);
+    background: linear-gradient(135deg, var(--gold), var(--green), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-align: center;
+    margin-bottom: 6px;
+    padding-top: 40px;
+  }
+
+  .landing-sub {
+    font-size: clamp(0.9rem, 3vw, 1.1rem);
+    color: rgba(255,255,255,0.4);
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+    width: 100%;
+    max-width: 560px;
+    padding: 0 20px;
+  }
+
+  .nav-card {
+    background: rgba(255,255,255,0.07);
+    border: 3px solid var(--card-color, rgba(255,255,255,0.25));
+    border-radius: 20px;
+    padding: 36px 20px 28px;
+    text-decoration: none;
+    color: #fff;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transition: transform .15s, background .15s, box-shadow .15s;
+    touch-action: manipulation;
+  }
+  .nav-card:hover {
+    transform: translateY(-4px);
+    background: rgba(255,255,255,0.12);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+  }
+  .nav-card:active { transform: translateY(-1px); }
+
+  .nav-card-icon  { font-size: 3.6rem; line-height: 1; }
+  .nav-card-name  { font-size: 1.5rem; font-weight: bold; color: var(--card-color, #fff); }
+  .nav-card-desc  { font-size: 0.9rem; color: rgba(255,255,255,0.5); line-height: 1.4; }
 </style>
 </head>
 <body>
 
-<div class="hub-header">
-  <div class="hub-title">⭐ Hallie's Games ⭐</div>
-  <div class="hub-subtitle">Pick a game to play!</div>
-  <div class="hub-tokens">🪙 <span id="hub-lifetime">0</span> tokens earned!</div>
-</div>
+<div class="landing-title">hallie.xyz</div>
+<div class="landing-sub">Games &amp; projects</div>
 
-<div class="game-grid">
-
-  <a href="games/letter-muncher/" class="game-card" style="--card-color: #4cff8c">
-    <div class="game-card-icon">🐸</div>
-    <div class="game-card-name">Letter Muncher</div>
-    <div class="game-card-desc">Move around the grid and find the letters to spell a word!</div>
-    <div class="game-card-play">Play!</div>
+<div class="nav-grid">
+  <a href="games/" class="nav-card" style="--card-color: #4cff8c">
+    <div class="nav-card-icon">🎮</div>
+    <div class="nav-card-name">Games</div>
+    <div class="nav-card-desc">Fun games to play</div>
   </a>
-
-  <a href="games/find-the-monster/" class="game-card" style="--card-color: #ff9ff3">
-    <div class="game-card-icon">🔦</div>
-    <div class="game-card-name">Find the Monster</div>
-    <div class="game-card-desc">Search the darkness with your flashlight to find the hidden monster!</div>
-    <div class="game-card-play">Play!</div>
+  <a href="projects/" class="nav-card" style="--card-color: #64c8ff">
+    <div class="nav-card-icon">📁</div>
+    <div class="nav-card-name">Projects</div>
+    <div class="nav-card-desc">Tools and other things</div>
   </a>
-
-  <!-- Add new games here. Copy the block above, update the href, icon, name, desc, and --card-color. -->
-
 </div>
-
-<script src="shared/game.js"></script>
-<script>
-  document.getElementById('hub-lifetime').textContent = Hallie.getLifetime();
-</script>
 
 </body>
 </html>
