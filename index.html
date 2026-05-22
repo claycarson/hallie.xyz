@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hallie's Games</title>
+<link rel="stylesheet" href="shared/style.css">
+<style>
+  body { padding-bottom: 40px; }
+</style>
+</head>
+<body>
+
+<div class="hub-header">
+  <div class="hub-title">⭐ Hallie's Games ⭐</div>
+  <div class="hub-subtitle">Pick a game to play!</div>
+  <div class="hub-tokens">🪙 <span id="hub-lifetime">0</span> tokens earned!</div>
+</div>
+
+<div class="game-grid">
+
+  <a href="games/letter-muncher/" class="game-card" style="--card-color: #4cff8c">
+    <div class="game-card-icon">🐸</div>
+    <div class="game-card-name">Letter Muncher</div>
+    <div class="game-card-desc">Move around the grid and find the letters to spell a word!</div>
+    <div class="game-card-play">Play!</div>
+  </a>
+
+  <!-- Add new games here. Copy the block above, update the href, icon, name, desc, and --card-color. -->
+
+</div>
+
+<script src="shared/game.js"></script>
+<script>
+  document.getElementById('hub-lifetime').textContent = Hallie.getLifetime();
+</script>
+
+</body>
+</html>

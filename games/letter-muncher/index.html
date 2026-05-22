@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Letter Muncher — Hallie's Games</title>
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+:root {
+  --cell: min(calc((100vw - 24px) / 10), 68px);
+}
+
+/* ── Grid ── */
+#grid-wrapper {
+  border: 3px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  padding: 4px;
+  margin: 4px auto;
+  flex-shrink: 0;
+}
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell));
+  grid-template-rows: repeat(10, var(--cell));
+  gap: 2px;
+}
+
+.cell {
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  overflow: hidden;
+}
+
+.cell-letter {
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #dde;
+  font-size: calc(var(--cell) * 0.42);
+}
+
+.cell-obstacle {
+  background: rgba(0,0,0,0.25);
+  font-size: calc(var(--cell) * 0.60);
+}
+
+.cell-player {
+  background: rgba(76,255,140,0.22);
+  border: 2px solid #4cff8c;
+  z-index: 2;
+}
+
+.player-emoji {
+  font-size: calc(var(--cell) * 0.52);
+  line-height: 1;
+}
+
+.under-char {
+  font-size: calc(var(--cell) * 0.24);
+  color: #ffd700;
+  line-height: 1;
+  margin-top: -2px;
+}
+
+.cell-empty {
+  background: rgba(255,255,255,0.035);
+}
+
+/* ── Word Bar ── */
+#word-bar {
+  width: 100%;
+  max-width: calc(var(--cell) * 10 + 32px);
+  padding: 8px 10px 4px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+#word-label {
+  font-size: clamp(0.7rem, 2.5vw, 0.85rem);
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+#hint-bar {
+  margin-top: 6px;
+  font-size: clamp(0.6rem, 2vw, 0.75rem);
+  color: rgba(255,255,255,0.3);
+}
+
+#penalty-warning {
+  display: none;
+  margin-top: 5px;
+  background: rgba(255,70,70,0.18);
+  border: 1px solid rgba(255,70,70,0.5);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: clamp(0.65rem, 2vw, 0.8rem);
+  color: #ff9090;
+}
+#penalty-warning.show { display: block; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    📖 Words: <span id="words-count">0</span>
+  </div>
+  <a href="../../" class="back-btn">← Games</a>
+</div>
+
+<!-- GRID -->
+<div id="grid-wrapper">
+  <div id="grid"></div>
+</div>
+
+<!-- WORD BAR -->
+<div id="word-bar">
+  <div id="word-label">Spell this word:</div>
+  <div class="word-letters" id="word-letters"></div>
+  <div id="hint-bar">Arrow keys or D-pad to move &nbsp;•&nbsp; SPACE or EAT to grab a letter</div>
+  <div id="penalty-warning">⚠️ Wrong letters cost a token now — be careful!</div>
+</div>
+
+<!-- D-PAD -->
+<div class="dpad-area">
+  <div class="dpad">
+    <div class="db-empty"></div>
+    <button class="db" id="db-up"    aria-label="Up">↑</button>
+    <div class="db-empty"></div>
+
+    <button class="db" id="db-left"  aria-label="Left">←</button>
+    <button class="db db-eat" id="db-eat" aria-label="Eat letter">EAT</button>
+    <button class="db" id="db-right" aria-label="Right">→</button>
+
+    <div class="db-empty"></div>
+    <button class="db" id="db-down"  aria-label="Down">↓</button>
+    <div class="db-empty"></div>
+  </div>
+</div>
+
+<!-- SENTENCE OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="ov-card">
+    <div class="ov-title">🌟 Amazing! 🌟</div>
+    <div class="ov-word" id="ov-word"></div>
+    <div class="ov-sentence" id="ov-sentence"></div>
+    <label class="ov-check-area">
+      <input type="checkbox" id="read-cb">
+      <span>I read the sentence! (+1 🪙)</span>
+    </label>
+    <button class="h-btn h-btn-green" id="next-btn">Next Word →</button>
+  </div>
+</div>
+
+<!-- SECRET MODAL (tap token display 5× fast to reveal) -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- CONFETTI -->
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─────────────────────────────────────────────
+// WORD LIST
+// ─────────────────────────────────────────────
+const WORDS = {
+  'pre-k': [
+    { word:'cat',  s:'The cat sat on the mat.' },
+    { word:'dog',  s:'My dog can run very fast.' },
+    { word:'sun',  s:'The sun is big and bright.' },
+    { word:'hat',  s:'I wear a hat on my head.' },
+    { word:'bug',  s:'I see a tiny little bug.' },
+    { word:'cup',  s:'My cup is full of juice.' },
+    { word:'bed',  s:'I sleep in my soft bed at night.' },
+    { word:'red',  s:'The apple is red and yummy.' },
+    { word:'hop',  s:'I can hop on one foot!' },
+    { word:'pig',  s:'The pig loves to play in the mud.' },
+    { word:'fox',  s:'The fox has a big fluffy tail.' },
+    { word:'wet',  s:'The dog got very wet in the rain.' },
+    { word:'hot',  s:'Be careful — the soup is very hot.' },
+    { word:'run',  s:'I love to run and play outside.' },
+    { word:'mop',  s:'Dad used the mop to clean the floor.' },
+    { word:'map',  s:'We used a map to find the park.' },
+    { word:'pan',  s:'Mom cooked eggs in the pan.' },
+    { word:'fin',  s:'The fish uses its fin to swim.' },
+    { word:'top',  s:'The spinning top goes round and round.' },
+    { word:'big',  s:'That elephant is really big!' },
+  ],
+  'kinder': [
+    { word:'love', s:'I love my family so much.' },
+    { word:'jump', s:'I can jump really, really high!' },
+    { word:'play', s:'Let\'s play in the park today.' },
+    { word:'look', s:'Look at that pretty butterfly!' },
+    { word:'help', s:'Can you help me find my shoe?' },
+    { word:'cake', s:'We had cake at the birthday party!' },
+    { word:'blue', s:'The sky is bright blue on a sunny day.' },
+    { word:'tree', s:'I love to climb the big oak tree.' },
+    { word:'frog', s:'The green frog sat by the pond.' },
+    { word:'star', s:'I can see a bright star in the night sky.' },
+    { word:'bird', s:'A little bird sang a pretty song.' },
+    { word:'fish', s:'The fish swims in the sparkling water.' },
+    { word:'book', s:'I love to read a good bedtime book.' },
+    { word:'rain', s:'The rain makes all the flowers grow.' },
+    { word:'moon', s:'The big moon glows in the night sky.' },
+    { word:'went', s:'We went to the store together today.' },
+    { word:'good', s:'You did such a good job — I\'m proud of you!' },
+    { word:'make', s:'Let\'s make a yummy snack together.' },
+    { word:'back', s:'I will be right back, I promise.' },
+    { word:'said', s:'She said hello and waved at me.' },
+    { word:'just', s:'I just learned something brand new!' },
+    { word:'here', s:'Come here and sit next to me.' },
+    { word:'long', s:'The snake is very, very long.' },
+    { word:'know', s:'I know all my letters and numbers!' },
+    { word:'more', s:'Can I please have a little more?' },
+    { word:'find', s:'Can you find the hidden treasure?' },
+    { word:'grew', s:'The tiny seed grew into a tall flower.' },
+    { word:'ride', s:'I love to ride my bike in the park.' },
+    { word:'drop', s:'Be careful not to drop your ice cream!' },
+    { word:'skip', s:'We skip down the path together.' },
+  ],
+  'first': [
+    { word:'every',  s:'Every single day I learn something new.' },
+    { word:'about',  s:'This book is about a brave little dragon.' },
+    { word:'first',  s:'I was first in line at the water fountain!' },
+    { word:'again',  s:'That was so fun — let\'s read it again!' },
+    { word:'still',  s:'The butterfly sat perfectly still on the flower.' },
+    { word:'thank',  s:'Thank you for being such a great friend.' },
+    { word:'think',  s:'I think that is a really great idea!' },
+    { word:'black',  s:'The night sky is black and full of bright stars.' },
+    { word:'bring',  s:'Please bring your favorite book to share tomorrow.' },
+    { word:'clean',  s:'Let\'s clean up our toys before dinner.' },
+    { word:'drink',  s:'Remember to drink lots of water every day.' },
+    { word:'funny',  s:'That silly joke was so funny it made me laugh!' },
+    { word:'green',  s:'The little frog is green and lives by the pond.' },
+    { word:'right',  s:'You got every single answer right!' },
+    { word:'small',  s:'A tiny mouse lives inside a small cozy house.' },
+    { word:'start',  s:'Let\'s start our big adventure right now!' },
+    { word:'water',  s:'Little fish live deep in the water.' },
+    { word:'happy',  s:'I feel so happy when I play outside with friends.' },
+    { word:'story',  s:'My very favorite story is about a kind dragon.' },
+    { word:'world',  s:'There are so many cool animals in our world.' },
+  ]
+};
+
+// ─────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────
+const N = 10;
+const CELLS = N * N;
+const OBS_COUNT = 18;
+const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const OBS_EMOJI = ['👾','🧱','🌵','🪨','🦕','🤖','👻','🌊','🌴','🐉'];
+const PLAYER = '🐸';
+const SAD    = '😞';
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let grid = [];
+let pRow = 4, pCol = 4;
+let wordObj = null;
+let letterIdx = 0;
+let wordsCompleted = 0;
+let phase = 'spelling';   // 'spelling' | 'sentence'
+let sadActive = false;
+let sadTimer = null;
+let usedWords = { 'pre-k': new Set(), 'kinder': new Set(), 'first': new Set() };
+
+// ─────────────────────────────────────────────
+// WORD SELECTION
+// ─────────────────────────────────────────────
+function pickWord() {
+  const r = Math.random();
+  let level = r < 0.20 ? 'pre-k' : r < 0.90 ? 'kinder' : 'first';
+  const pool = WORDS[level];
+  if (usedWords[level].size >= pool.length) usedWords[level].clear();
+  const avail = pool.map((_,i) => i).filter(i => !usedWords[level].has(i));
+  const idx = avail[Math.floor(Math.random() * avail.length)];
+  usedWords[level].add(idx);
+  return pool[idx];
+}
+
+// ─────────────────────────────────────────────
+// GRID
+// ─────────────────────────────────────────────
+function buildGrid() {
+  const letters = wordObj.word.toUpperCase().split('');
+  grid = Array.from({ length: CELLS }, () => ({ type: 'empty' }));
+  const pPos = pRow * N + pCol;
+
+  // Place obstacles
+  const reserved = new Set([pPos]);
+  let attempts = 0;
+  while (reserved.size < OBS_COUNT + 1 && attempts < 9999) {
+    const pos = Math.floor(Math.random() * CELLS);
+    if (!reserved.has(pos)) {
+      reserved.add(pos);
+      grid[pos] = { type: 'obstacle', emoji: OBS_EMOJI[Math.floor(Math.random() * OBS_EMOJI.length)] };
+    }
+    attempts++;
+  }
+
+  // Guarantee one cell per letter in the word (handles duplicates)
+  for (const ch of letters) {
+    let pos, tries = 0;
+    do { pos = Math.floor(Math.random() * CELLS); tries++; }
+    while ((grid[pos].type !== 'empty' || pos === pPos) && tries < 9999);
+    grid[pos] = { type: 'letter', char: ch };
+  }
+
+  // Fill remaining empty cells with random letters
+  for (let i = 0; i < CELLS; i++) {
+    if (grid[i].type === 'empty' && i !== pPos) {
+      grid[i] = { type: 'letter', char: ALPHA[Math.floor(Math.random() * 26)] };
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────
+function render() {
+  let html = '';
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const idx  = r * N + c;
+      const cell = grid[idx];
+      const isPlayer = r === pRow && c === pCol;
+
+      if (isPlayer) {
+        const under = cell.type === 'letter' ? cell.char : '';
+        html += `<div class="cell cell-player" data-i="${idx}">` +
+                `<span class="player-emoji">${sadActive ? SAD : PLAYER}</span>` +
+                (under ? `<span class="under-char">${under}</span>` : '') +
+                `</div>`;
+      } else if (cell.type === 'obstacle') {
+        html += `<div class="cell cell-obstacle">${cell.emoji}</div>`;
+      } else if (cell.type === 'letter') {
+        html += `<div class="cell cell-letter">${cell.char}</div>`;
+      } else {
+        html += `<div class="cell cell-empty"></div>`;
+      }
+    }
+  }
+  document.getElementById('grid').innerHTML = html;
+}
+
+function renderWord() {
+  const letters = wordObj.word.toUpperCase().split('');
+  document.getElementById('word-letters').innerHTML = letters.map((ch, i) => {
+    const cls = i < letterIdx ? 'wl collected' : i === letterIdx ? 'wl next' : 'wl';
+    return `<div class="${cls}">${ch}</div>`;
+  }).join('');
+  document.getElementById('penalty-warning').classList.toggle('show', wordsCompleted >= 10);
+}
+
+function updateWordsDisplay() {
+  document.getElementById('words-count').textContent = wordsCompleted;
+}
+
+// ─────────────────────────────────────────────
+// MOVEMENT & SELECTION
+// ─────────────────────────────────────────────
+function move(dr, dc) {
+  if (phase !== 'spelling') return;
+  const nr = pRow + dr, nc = pCol + dc;
+  if (nr < 0 || nr >= N || nc < 0 || nc >= N) return;
+  if (grid[nr * N + nc].type === 'obstacle') return;
+  pRow = nr; pCol = nc;
+  render();
+}
+
+function eat() {
+  if (phase !== 'spelling' || sadActive) return;
+  const idx  = pRow * N + pCol;
+  const cell = grid[idx];
+  if (cell.type !== 'letter') return;
+
+  const needed = wordObj.word.toUpperCase()[letterIdx];
+  if (cell.char === needed) {
+    grid[idx] = { type: 'empty' };
+    letterIdx++;
+    render();
+    renderWord();
+    if (letterIdx >= wordObj.word.length) wordComplete();
+  } else {
+    wrongLetter();
+  }
+}
+
+// ─────────────────────────────────────────────
+// WRONG LETTER
+// ─────────────────────────────────────────────
+function wrongLetter() {
+  if (sadActive) return;
+  if (wordsCompleted >= 10) Hallie.addSession(-1);
+
+  sadActive = true;
+  render();
+  document.querySelector('.cell-player')?.classList.add('wiggle');
+
+  clearTimeout(sadTimer);
+  sadTimer = setTimeout(() => { sadActive = false; render(); }, 900);
+}
+
+// ─────────────────────────────────────────────
+// WORD COMPLETE
+// ─────────────────────────────────────────────
+function wordComplete() {
+  phase = 'sentence';
+  Hallie.addSession(1);
+  wordsCompleted++;
+  updateWordsDisplay();
+  Hallie.confetti();
+
+  setTimeout(() => {
+    document.getElementById('ov-word').textContent = wordObj.word.toUpperCase();
+    document.getElementById('ov-sentence').textContent = wordObj.s;
+    document.getElementById('read-cb').checked = false;
+    document.getElementById('overlay').classList.add('show');
+  }, 500);
+}
+
+// ─────────────────────────────────────────────
+// NEXT WORD
+// ─────────────────────────────────────────────
+function nextWord() {
+  document.getElementById('overlay').classList.remove('show');
+  wordObj = pickWord();
+  letterIdx = 0;
+  phase = 'spelling';
+  sadActive = false;
+  pRow = 4; pCol = 4;
+  buildGrid();
+  render();
+  renderWord();
+}
+
+// ─────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────
+document.getElementById('read-cb').addEventListener('change', function() {
+  Hallie.addSession(this.checked ? 1 : -1);
+});
+
+document.getElementById('next-btn').addEventListener('click', nextWord);
+
+document.addEventListener('keydown', e => {
+  if (phase === 'sentence') { if (e.key === 'Enter') nextWord(); return; }
+  switch (e.key) {
+    case 'ArrowUp':    e.preventDefault(); move(-1, 0); break;
+    case 'ArrowDown':  e.preventDefault(); move( 1, 0); break;
+    case 'ArrowLeft':  e.preventDefault(); move( 0,-1); break;
+    case 'ArrowRight': e.preventDefault(); move( 0, 1); break;
+    case ' ':          e.preventDefault(); eat();       break;
+    case 'w': case 'W': move(-1, 0); break;
+    case 's': case 'S': move( 1, 0); break;
+    case 'a': case 'A': move( 0,-1); break;
+    case 'd': case 'D': move( 0, 1); break;
+  }
+});
+
+// D-pad
+(function() {
+  const map = {
+    'db-up':    () => move(-1, 0),
+    'db-down':  () => move( 1, 0),
+    'db-left':  () => move( 0,-1),
+    'db-right': () => move( 0, 1),
+    'db-eat':   () => eat(),
+  };
+  for (const [id, fn] of Object.entries(map)) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('touchstart', e => { e.preventDefault(); btn.classList.add('pressed'); fn(); }, { passive: false });
+    btn.addEventListener('touchend',   e => { e.preventDefault(); btn.classList.remove('pressed'); }, { passive: false });
+    btn.addEventListener('mousedown',  e => { e.preventDefault(); fn(); });
+  }
+})();
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+Hallie.initSecretTap(document.getElementById('token-display'));
+wordObj = pickWord();
+buildGrid();
+render();
+renderWord();
+</script>
+</body>
+</html>

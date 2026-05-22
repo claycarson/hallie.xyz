@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  HALLIE.XYZ — New Game Template                             ║
+  ║                                                              ║
+  ║  Steps to make a new game:                                   ║
+  ║  1. Copy this folder to games/<your-game-name>/              ║
+  ║  2. Update <title> and the topbar score-display label        ║
+  ║  3. Add game-specific CSS in the <style> block               ║
+  ║  4. Replace the #game-area div with your game's HTML         ║
+  ║  5. Implement game logic in the <script> block               ║
+  ║  6. Add a game card to /hallie.xyz/index.html                ║
+  ║                                                              ║
+  ║  What you get for free (from shared/):                       ║
+  ║  • Token tracking  → Hallie.addSession(n)                    ║
+  ║  • Confetti        → Hallie.confetti()                       ║
+  ║  • Lifetime total  → tap token display 5× fast               ║
+  ║  • D-pad buttons   → wire up with the dpad setup below       ║
+  ║  • Arrow key input → fill in the keydown switch below        ║
+  ║  • All shared CSS  → body, topbar, overlays, d-pad, etc.     ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GAME NAME — Hallie's Games</title>
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  /* Add game-specific styles here */
+
+  #game-area {
+    width: 100%;
+    max-width: 720px;
+    padding: 16px;
+    text-align: center;
+    font-size: 1.5rem;
+    color: rgba(255,255,255,0.4);
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR — keep this, update the score label for your game -->
+<div class="topbar">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    ⭐ Score: <span id="score">0</span>
+  </div>
+  <a href="../../" class="back-btn">← Games</a>
+</div>
+
+<!-- GAME AREA — replace with your game -->
+<div id="game-area">
+  Your game goes here!
+</div>
+
+<!-- D-PAD — keep for tablet play, wire up below -->
+<div class="dpad-area">
+  <div class="dpad">
+    <div class="db-empty"></div>
+    <button class="db" id="db-up"    aria-label="Up">↑</button>
+    <div class="db-empty"></div>
+
+    <button class="db" id="db-left"  aria-label="Left">←</button>
+    <button class="db db-eat" id="db-act" aria-label="Action">GO</button>
+    <button class="db" id="db-right" aria-label="Right">→</button>
+
+    <div class="db-empty"></div>
+    <button class="db" id="db-down"  aria-label="Down">↓</button>
+    <div class="db-empty"></div>
+  </div>
+</div>
+
+<!-- SECRET MODAL — keep this, don't change IDs -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- CONFETTI — keep this, don't change ID -->
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─── State ───────────────────────────────────
+let score = 0;
+
+function updateScore(n) {
+  score += n;
+  document.getElementById('score').textContent = score;
+}
+
+// ─── Game Logic ──────────────────────────────
+// TODO: implement your game here
+// Award tokens with: Hallie.addSession(1)
+// Celebrate with:    Hallie.confetti()
+
+// ─── Keyboard ────────────────────────────────
+document.addEventListener('keydown', e => {
+  switch (e.key) {
+    case 'ArrowUp':    e.preventDefault(); /* move up    */ break;
+    case 'ArrowDown':  e.preventDefault(); /* move down  */ break;
+    case 'ArrowLeft':  e.preventDefault(); /* move left  */ break;
+    case 'ArrowRight': e.preventDefault(); /* move right */ break;
+    case ' ':          e.preventDefault(); /* action     */ break;
+  }
+});
+
+// ─── D-Pad ───────────────────────────────────
+(function() {
+  const map = {
+    'db-up':    () => { /* move up    */ },
+    'db-down':  () => { /* move down  */ },
+    'db-left':  () => { /* move left  */ },
+    'db-right': () => { /* move right */ },
+    'db-act':   () => { /* action     */ },
+  };
+  for (const [id, fn] of Object.entries(map)) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('touchstart', e => { e.preventDefault(); btn.classList.add('pressed'); fn(); }, { passive: false });
+    btn.addEventListener('touchend',   e => { e.preventDefault(); btn.classList.remove('pressed'); }, { passive: false });
+    btn.addEventListener('mousedown',  e => { e.preventDefault(); fn(); });
+  }
+})();
+
+// ─── Init ────────────────────────────────────
+Hallie.initSecretTap(document.getElementById('token-display'));
+// TODO: start your game
+</script>
+</body>
+</html>
