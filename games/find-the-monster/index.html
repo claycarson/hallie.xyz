@@ -10,13 +10,27 @@
   body {
     overflow: hidden;
     height: 100vh;
-    background: #000;
+    background: #06090e;   /* deep navy-black so warm light reads clearly */
     padding-bottom: 0;
     cursor: none;
   }
 
-  /* Topbar floats over the dark game */
-  .topbar { cursor: auto; }
+  /* Restore pointer on interactive topbar elements */
+  .token-display, .back-btn { cursor: pointer; }
+
+  /* ── Flashlight cursor emoji ── */
+  #flashlight-cursor {
+    position: fixed;
+    font-size: 34px;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 20;
+    /* Beam-end sits at the hotspot; emoji body hangs upper-right */
+    transform: translate(-72%, -88%) rotate(20deg);
+    will-change: left, top;
+    left: -200px;  /* off-screen until first move */
+    top: -200px;
+  }
 
   /* ── Darkness overlay ── */
   #darkness {
@@ -24,9 +38,7 @@
     inset: 0;
     pointer-events: none;
     z-index: 5;
-    /* Updated via JS to carve a flashlight hole */
-    background: radial-gradient(circle 130px at -999px -999px, transparent 35%, rgba(0,0,0,0.97) 100%);
-    transition: background 0.04s linear;
+    background: #06090e;   /* solid dark before first move */
   }
 
   /* ── Monster ── */
@@ -134,6 +146,9 @@
 <!-- GLOWING EYES (above darkness) -->
 <div id="monster-eyes"></div>
 
+<!-- FLASHLIGHT CURSOR -->
+<div id="flashlight-cursor">🔦</div>
+
 <!-- DARKNESS OVERLAY -->
 <div id="darkness"></div>
 
@@ -179,11 +194,12 @@ let foundCount = 0;
 let catching = false;
 let hintDismissed = false;
 
-const darkness     = document.getElementById('darkness');
-const monsterEl    = document.getElementById('monster');
-const eyesEl       = document.getElementById('monster-eyes');
-const foundCountEl = document.getElementById('found-count');
-const hintEl       = document.getElementById('search-hint');
+const darkness        = document.getElementById('darkness');
+const monsterEl       = document.getElementById('monster');
+const eyesEl          = document.getElementById('monster-eyes');
+const foundCountEl    = document.getElementById('found-count');
+const hintEl          = document.getElementById('search-hint');
+const flashlightCursor = document.getElementById('flashlight-cursor');
 
 // ─────────────────────────────────────────────
 // MONSTER PLACEMENT
@@ -221,9 +237,19 @@ function updateLight(x, y) {
   cursorX = x;
   cursorY = y;
 
-  // Update flashlight position
+  // Move the flashlight emoji cursor to follow the pointer
+  flashlightCursor.style.left = x + 'px';
+  flashlightCursor.style.top  = y + 'px';
+
+  // Two-layer gradient:
+  // 1. Warm hot-spot — soft yellow glow at the beam center (mimics real light)
+  // 2. Darkness — transparent circle carving visibility, fading to near-black
+  const r = FLASHLIGHT_R;
   darkness.style.background =
-    `radial-gradient(circle ${FLASHLIGHT_R}px at ${x}px ${y}px, transparent 35%, rgba(0,0,0,0.97) 100%)`;
+    `radial-gradient(circle ${Math.round(r * 0.42)}px at ${x}px ${y}px,` +
+    ` rgba(255,238,150,0.22) 0%, rgba(255,220,100,0.06) 60%, transparent 100%),` +
+    `radial-gradient(circle ${r}px at ${x}px ${y}px,` +
+    ` transparent 0%, transparent 52%, rgba(0,0,0,0.55) 72%, rgba(0,0,0,0.97) 100%)`;
 
   if (catching) return;
 
