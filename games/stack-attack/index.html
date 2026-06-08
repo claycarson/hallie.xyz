@@ -77,8 +77,9 @@
 
   /* Game over overlay uses shared .overlay + .ov-card but needs a few extras */
   #overlay-gameover .ov-card { max-width: 320px; text-align: center; }
-  #ov-score { font-size: 2.4rem; font-weight: bold; color: var(--gold); margin: 8px 0 4px; }
-  #ov-best  { font-size: 1rem; color: rgba(255,255,255,0.6); margin-bottom: 18px; }
+  #ov-score    { font-size: 2.4rem; font-weight: bold; color: var(--gold); margin: 8px 0 4px; }
+  #ov-best     { font-size: 1rem; color: rgba(255,255,255,0.6); margin-bottom: 6px; }
+  #ov-perfects { font-size: 0.92rem; color: rgba(200,200,255,0.85); margin-bottom: 16px; min-height: 1.2em; }
   #ov-play-again { width: 100%; margin-bottom: 10px; }
   .ov-mode-row { display: flex; gap: 10px; justify-content: center; }
   .ov-mode-row button { flex: 1; }
@@ -114,6 +115,7 @@
     <div class="ov-title">💥 Game Over!</div>
     <div id="ov-score">0</div>
     <div id="ov-best">Best: 0 blocks</div>
+    <div id="ov-perfects"></div>
     <button class="h-btn h-btn-green" id="ov-play-again">Play Again! 🎮</button>
     <div class="ov-mode-row">
       <button class="h-btn" id="ov-easy-btn">😌 Easy</button>
@@ -131,6 +133,8 @@
     <div>🔐 Secret Stats 🔐</div>
     <br>
     <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <div>All-time perfects: <strong id="alltime-perfects-val">0</strong> ✨</div>
+    <div>Highest perfect block: <strong id="alltime-perfect-block-val">—</strong> 🧱</div>
     <br>
     <button class="sm-close" id="sm-close">Close</button>
   </div>
@@ -244,6 +248,10 @@ let hardMode = false;
 let entryCount = 0; // alternates which void blocks enter from
 let best = parseInt(localStorage.getItem('stack-attack-best') || '0', 10);
 let lastLevelToken = 0;
+let sessionPerfects = 0;
+let sessionHighestPerfectBlock = 0;
+let alltimePerfects = parseInt(localStorage.getItem('stack-attack-all-perfects') || '0', 10);
+let alltimePerfectHighestBlock = parseInt(localStorage.getItem('stack-attack-perfect-highest-block') || '0', 10);
 
 // DOM refs
 const scoreVal      = document.getElementById('score-val');
@@ -263,6 +271,14 @@ function updateBestDisplay() {
 function showGameOverOverlay() {
   ovScore.textContent = score === 1 ? '1 block!' : `${score} blocks!`;
   updateBestDisplay();
+  const ovPerfects = document.getElementById('ov-perfects');
+  if (sessionPerfects === 0) {
+    ovPerfects.textContent = 'No perfects this game';
+  } else if (sessionPerfects === 1) {
+    ovPerfects.textContent = `✨ 1 perfect (at block ${sessionHighestPerfectBlock})`;
+  } else {
+    ovPerfects.textContent = `✨ ${sessionPerfects} perfects (highest at block ${sessionHighestPerfectBlock})`;
+  }
   overlayGO.classList.add('show');
 }
 
@@ -328,15 +344,27 @@ function checkLevelUp() {
       lastLevelToken = level;
       Hallie.addSession(1);
     }
-    Hallie.flashMessage(`Level ${level}! 🚀`, 1400);
+    Hallie.flashMessage(`Level ${level}! 🚀`, 700);
   }
 }
 
 // ─────────────────────────────────────────────────────
 // GAME OVER
 // ─────────────────────────────────────────────────────
+function updateSecretModalStats() {
+  document.getElementById('alltime-perfects-val').textContent = alltimePerfects;
+  document.getElementById('alltime-perfect-block-val').textContent = alltimePerfectHighestBlock || '—';
+}
+
 function triggerGameOver() {
   gameState = 'GAME_OVER';
+  alltimePerfects += sessionPerfects;
+  localStorage.setItem('stack-attack-all-perfects', alltimePerfects);
+  if (sessionHighestPerfectBlock > alltimePerfectHighestBlock) {
+    alltimePerfectHighestBlock = sessionHighestPerfectBlock;
+    localStorage.setItem('stack-attack-perfect-highest-block', alltimePerfectHighestBlock);
+  }
+  updateSecretModalStats();
   if (score > best) {
     best = score;
     localStorage.setItem('stack-attack-best', best);
@@ -357,6 +385,8 @@ function startGame() {
   score = 0;
   level = 1;
   lastLevelToken = 1;
+  sessionPerfects = 0;
+  sessionHighestPerfectBlock = 0;
   entryCount = 1; // first block entered from left (count 0); next from right
   camTargetY = 1;
   camCurrentY = 1;
@@ -391,6 +421,8 @@ function placeBlock() {
     score = 0;
     level = 1;
     lastLevelToken = 1;
+    sessionPerfects = 0;
+    sessionHighestPerfectBlock = 0;
     hardAxis = 'x';
     entryCount = 1;
     fallingPieces = [];
@@ -451,9 +483,13 @@ function placeBlock() {
     moving.d = nd;
   }
 
-  if (perfect) Hallie.flashMessage('Perfect! ✨', 900);
+  if (perfect) Hallie.flashMessage('Perfect! ✨', 450);
 
   score++;
+  if (perfect) {
+    sessionPerfects++;
+    sessionHighestPerfectBlock = score;
+  }
   moving.y += 1;
 
   // Next block entry direction
@@ -668,6 +704,7 @@ document.getElementById('ov-hard-btn').addEventListener('click', () => {
 Hallie.initSecretTap(document.getElementById('token-display'));
 setHardMode(false);
 updateBestDisplay();
+updateSecretModalStats();
 requestAnimationFrame(gameLoop);
 </script>
 </body>
