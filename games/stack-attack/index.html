@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stack Attack! — Hallie's Games</title>
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  body {
+    overflow: hidden;
+    height: 100vh;
+    padding-bottom: 0;
+    background: #0a1628;
+  }
+
+  #game-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    touch-action: none;
+  }
+
+  #place-btn {
+    position: fixed;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(320px, 90vw);
+    padding: 18px 0;
+    font-size: 1.4rem;
+    font-family: var(--font);
+    font-weight: bold;
+    background: linear-gradient(135deg, var(--green), #00b84a);
+    color: var(--bg-dark);
+    border: none;
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(76,255,140,0.45);
+    cursor: pointer;
+    touch-action: manipulation;
+    z-index: 15;
+    transition: transform 0.08s, box-shadow 0.08s;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #place-btn:active {
+    transform: translateX(-50%) scale(0.95);
+    box-shadow: 0 2px 12px rgba(76,255,140,0.3);
+  }
+
+  #hard-toggle {
+    position: fixed;
+    top: 64px;
+    right: 12px;
+    z-index: 15;
+    background: rgba(255,255,255,0.1);
+    border: 1.5px solid rgba(255,255,255,0.25);
+    border-radius: 12px;
+    padding: 6px 12px;
+    font-family: var(--font);
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background 0.15s;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #hard-toggle:active { background: rgba(255,255,255,0.2); }
+  #hard-toggle.hard-on {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255,107,107,0.12);
+  }
+
+  /* Game over overlay uses shared .overlay + .ov-card but needs a few extras */
+  #overlay-gameover .ov-card { max-width: 320px; text-align: center; }
+  #ov-score { font-size: 2.4rem; font-weight: bold; color: var(--gold); margin: 8px 0 4px; }
+  #ov-best  { font-size: 1rem; color: rgba(255,255,255,0.6); margin-bottom: 18px; }
+  #ov-play-again { width: 100%; margin-bottom: 10px; }
+  .ov-mode-row { display: flex; gap: 10px; justify-content: center; }
+  .ov-mode-row button { flex: 1; }
+
+  /* Intro "tap to play" screen uses canvas — no extra CSS needed */
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar topbar-dark">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    🧱 <span id="score-val">0</span>
+  </div>
+  <a href="../" class="back-btn">← Games</a>
+</div>
+
+<!-- CANVAS -->
+<canvas id="game-canvas"></canvas>
+
+<!-- PLACE BUTTON -->
+<button id="place-btn">TAP TO PLACE! 🧱</button>
+
+<!-- HARD MODE TOGGLE -->
+<button id="hard-toggle">🔥 Hard Mode</button>
+
+<!-- GAME OVER OVERLAY -->
+<div class="overlay" id="overlay-gameover">
+  <div class="ov-card">
+    <div class="ov-title">💥 Game Over!</div>
+    <div id="ov-score">0</div>
+    <div id="ov-best">Best: 0 blocks</div>
+    <button class="h-btn h-btn-green" id="ov-play-again">Play Again! 🎮</button>
+    <div class="ov-mode-row">
+      <button class="h-btn" id="ov-easy-btn">😌 Easy</button>
+      <button class="h-btn" id="ov-hard-btn">🔥 Hard</button>
+    </div>
+  </div>
+</div>
+
+<!-- FLASH MESSAGE -->
+<div class="flash-msg" id="flash-msg"></div>
+
+<!-- SECRET MODAL -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- CONFETTI -->
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─────────────────────────────────────────────────────
+// CANVAS + RESIZE
+// ─────────────────────────────────────────────────────
+const canvas = document.getElementById('game-canvas');
+const ctx    = canvas.getContext('2d');
+const dpr    = window.devicePixelRatio || 1;
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ─────────────────────────────────────────────────────
+// ISOMETRIC CONSTANTS
+// ─────────────────────────────────────────────────────
+const TILE_W  = 64;   // px per game unit horizontal
+const TILE_H  = 32;   // px per game unit depth (TILE_W/2)
+const BLOCK_H = 26;   // px height per stack level
+
+// project(x, z, y) → { sx, sy } relative to camera origin
+function project(x, z, y) {
+  return {
+    sx: (x - z) * (TILE_W / 2),
+    sy: (x + z) * (TILE_H / 2) - y * BLOCK_H,
+  };
+}
+
+function drawBlock(block, camX, camY, alpha) {
+  const { x, z, y, w, d, hue } = block;
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+
+  const isFoundation = hue < 0;
+  const topC   = isFoundation ? 'hsl(220,15%,30%)' : `hsl(${hue},82%,58%)`;
+  const rightC = isFoundation ? 'hsl(220,15%,20%)' : `hsl(${hue},82%,40%)`;
+  const frontC = isFoundation ? 'hsl(220,15%,13%)' : `hsl(${hue},82%,28%)`;
+
+  function sc(gx, gz, gy) {
+    const p = project(gx, gz, gy);
+    return [p.sx + camX, p.sy + camY];
+  }
+
+  const TL  = sc(x,   z,   y);
+  const TR  = sc(x+w, z,   y);
+  const BR  = sc(x+w, z+d, y);
+  const BL  = sc(x,   z+d, y);
+  const TRb = sc(x+w, z,   y-1);
+  const BRb = sc(x+w, z+d, y-1);
+  const BLb = sc(x,   z+d, y-1);
+
+  ctx.beginPath(); ctx.moveTo(...TL); ctx.lineTo(...TR); ctx.lineTo(...BR); ctx.lineTo(...BL);
+  ctx.closePath(); ctx.fillStyle = topC; ctx.fill();
+
+  ctx.beginPath(); ctx.moveTo(...TR); ctx.lineTo(...BR); ctx.lineTo(...BRb); ctx.lineTo(...TRb);
+  ctx.closePath(); ctx.fillStyle = rightC; ctx.fill();
+
+  ctx.beginPath(); ctx.moveTo(...BL); ctx.lineTo(...BR); ctx.lineTo(...BRb); ctx.lineTo(...BLb);
+  ctx.closePath(); ctx.fillStyle = frontC; ctx.fill();
+
+  if (alpha !== undefined) ctx.globalAlpha = 1;
+}
+
+// ─────────────────────────────────────────────────────
+// GAME CONSTANTS
+// ─────────────────────────────────────────────────────
+const BLOCK_SIZE     = 4.0;   // square blocks: w = d
+const MOVE_RANGE     = 5.5;
+const PERFECT_THRESH = 0.18;
+const MIN_OVERLAP    = 0.25;
+const MIN_SPEED      = 1.5;   // units/sec at block 0
+const MAX_SPEED      = 9.0;   // units/sec at block 80
+const SPEED_MAX_AT   = 80;
+
+// Hue 270° (violet) at block 0 → 0° (red) at block 70+
+// Each block = 270/70 ≈ 3.86°, so every 10 blocks = one full color step
+function blockHue(n) {
+  return 270 * (1 - Math.min(n / 70, 1));
+}
+
+function getSpeed() {
+  return MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.min(score / SPEED_MAX_AT, 1);
+}
+
+// ─────────────────────────────────────────────────────
+// GAME STATE
+// ─────────────────────────────────────────────────────
+let gameState = 'INTRO'; // 'INTRO' | 'PLAYING' | 'GAME_OVER'
+let placedBlocks = [];
+let fallingPieces = [];
+let moving = null;
+let camTargetY = 0, camCurrentY = 0;
+let score = 0, level = 1;
+let hardMode = false, hardAxis = 'x';
+let entryCount = 0; // alternates which void blocks enter from
+let best = parseInt(localStorage.getItem('stack-attack-best') || '0', 10);
+let lastLevelToken = 0;
+
+// DOM refs
+const scoreVal      = document.getElementById('score-val');
+const overlayGO     = document.getElementById('overlay-gameover');
+const ovScore       = document.getElementById('ov-score');
+const ovBest        = document.getElementById('ov-best');
+const hardToggleBtn = document.getElementById('hard-toggle');
+
+function updateScoreDisplay() {
+  scoreVal.textContent = score;
+}
+
+function updateBestDisplay() {
+  ovBest.textContent = `Best: ${best} blocks`;
+}
+
+function showGameOverOverlay() {
+  ovScore.textContent = score === 1 ? '1 block!' : `${score} blocks!`;
+  updateBestDisplay();
+  overlayGO.classList.add('show');
+}
+
+function hideGameOverOverlay() {
+  overlayGO.classList.remove('show');
+}
+
+// ─────────────────────────────────────────────────────
+// CAMERA
+// ─────────────────────────────────────────────────────
+function getCamOffset() {
+  const cx = project(BLOCK_SIZE / 2, BLOCK_SIZE / 2, 0);
+  const camX = W / 2 - cx.sx;
+  // Keep top of tower at ~38% from top of screen
+  const camY = H * 0.38 + camCurrentY * BLOCK_H;
+  return { camX, camY };
+}
+
+// ─────────────────────────────────────────────────────
+// FALLING PIECES
+// ─────────────────────────────────────────────────────
+function spawnFalling(x, z, w, d, hue) {
+  fallingPieces.push({ x, z, w, d, y: moving.y, hue, vy: 0, elapsed: 0 });
+}
+
+function updateFalling(dt) {
+  for (let i = fallingPieces.length - 1; i >= 0; i--) {
+    const p = fallingPieces[i];
+    p.elapsed += dt;
+    p.vy += 16 * dt;
+    p.y  -= p.vy * dt;
+    if (p.elapsed > 1.1) fallingPieces.splice(i, 1);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// MOVING BLOCK UPDATE
+// ─────────────────────────────────────────────────────
+function updateMoving(dt) {
+  const speed = getSpeed();
+  const ref   = placedBlocks[placedBlocks.length - 1];
+  const axis  = moving.axis;
+
+  if (axis === 'x') {
+    moving.x += moving.dir * speed * dt;
+    if (moving.x < ref.x - MOVE_RANGE)              { moving.dir =  1; moving.x = ref.x - MOVE_RANGE; }
+    if (moving.x + moving.w > ref.x + ref.w + MOVE_RANGE) { moving.dir = -1; moving.x = ref.x + ref.w + MOVE_RANGE - moving.w; }
+  } else {
+    moving.z += moving.dir * speed * dt;
+    if (moving.z < ref.z - MOVE_RANGE)              { moving.dir =  1; moving.z = ref.z - MOVE_RANGE; }
+    if (moving.z + moving.d > ref.z + ref.d + MOVE_RANGE) { moving.dir = -1; moving.z = ref.z + ref.d + MOVE_RANGE - moving.d; }
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// LEVEL CHECK
+// ─────────────────────────────────────────────────────
+function checkLevelUp() {
+  const newLevel = Math.floor(score / 10) + 1;
+  if (newLevel > level) {
+    level = newLevel;
+    if (level > lastLevelToken) {
+      lastLevelToken = level;
+      Hallie.addSession(1);
+    }
+    Hallie.flashMessage(`Level ${level}! 🚀`, 1400);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// GAME OVER
+// ─────────────────────────────────────────────────────
+function triggerGameOver() {
+  gameState = 'GAME_OVER';
+  if (score > best) {
+    best = score;
+    localStorage.setItem('stack-attack-best', best);
+    setTimeout(() => {
+      Hallie.flashMessage('NEW BEST! 🏆', 2000);
+      Hallie.confetti();
+    }, 300);
+  }
+  setTimeout(showGameOverOverlay, 700);
+}
+
+// ─────────────────────────────────────────────────────
+// START GAME
+// ─────────────────────────────────────────────────────
+function startGame() {
+  placedBlocks = [];
+  fallingPieces = [];
+  score = 0;
+  level = 1;
+  lastLevelToken = 1;
+  hardAxis = 'x';
+  entryCount = 1; // first block entered from left (count 0); next from right
+  camTargetY = 1;
+  camCurrentY = 1;
+
+  placedBlocks.push({ x: 0, z: 0, w: BLOCK_SIZE, d: BLOCK_SIZE, y: 0, hue: -1 });
+
+  moving = {
+    x: -MOVE_RANGE, z: 0,
+    w: BLOCK_SIZE, d: BLOCK_SIZE,
+    y: 1,
+    hue: blockHue(0),
+    dir: 1,
+    axis: 'x',
+  };
+
+  gameState = 'PLAYING';
+  hideGameOverOverlay();
+  updateScoreDisplay();
+}
+
+// ─────────────────────────────────────────────────────
+// PLACE BLOCK
+// ─────────────────────────────────────────────────────
+function placeBlock() {
+  if (gameState === 'INTRO' || gameState === 'GAME_OVER') {
+    if (gameState === 'GAME_OVER') hideGameOverOverlay();
+    startGame();
+    return;
+  }
+  if (gameState !== 'PLAYING') return;
+
+  const top  = placedBlocks[placedBlocks.length - 1];
+  const axis = moving.axis;
+  let perfect = false;
+
+  if (axis === 'x') {
+    const oStart  = Math.max(moving.x, top.x);
+    const oEnd    = Math.min(moving.x + moving.w, top.x + top.w);
+    const overlap = Math.round((oEnd - oStart) * 1000) / 1000;
+
+    if (overlap <= 0 || overlap < MIN_OVERLAP) { triggerGameOver(); return; }
+
+    perfect = Math.abs(moving.x - top.x) < PERFECT_THRESH && Math.abs((moving.x + moving.w) - (top.x + top.w)) < PERFECT_THRESH;
+
+    if (!perfect) {
+      if (moving.x < oStart)
+        spawnFalling(moving.x, moving.z, oStart - moving.x, moving.d, moving.hue);
+      if (moving.x + moving.w > oEnd)
+        spawnFalling(oEnd, moving.z, (moving.x + moving.w) - oEnd, moving.d, moving.hue);
+    }
+
+    const nx = perfect ? top.x : oStart;
+    const nw = perfect ? top.w : overlap;
+    placedBlocks.push({ x: nx, z: moving.z, w: nw, d: moving.d, y: moving.y, hue: moving.hue });
+    moving.x = nx;
+    moving.w = nw;
+
+  } else {
+    const oStart  = Math.max(moving.z, top.z);
+    const oEnd    = Math.min(moving.z + moving.d, top.z + top.d);
+    const overlap = Math.round((oEnd - oStart) * 1000) / 1000;
+
+    if (overlap <= 0 || overlap < MIN_OVERLAP) { triggerGameOver(); return; }
+
+    perfect = Math.abs(moving.z - top.z) < PERFECT_THRESH && Math.abs((moving.z + moving.d) - (top.z + top.d)) < PERFECT_THRESH;
+
+    if (!perfect) {
+      if (moving.z < oStart)
+        spawnFalling(moving.x, moving.z, moving.w, oStart - moving.z, moving.hue);
+      if (moving.z + moving.d > oEnd)
+        spawnFalling(moving.x, oEnd, moving.w, (moving.z + moving.d) - oEnd, moving.hue);
+    }
+
+    const nz = perfect ? top.z : oStart;
+    const nd = perfect ? top.d : overlap;
+    placedBlocks.push({ x: moving.x, z: nz, w: moving.w, d: nd, y: moving.y, hue: moving.hue });
+    moving.z = nz;
+    moving.d = nd;
+  }
+
+  if (perfect) Hallie.flashMessage('Perfect! ✨', 900);
+
+  score++;
+  moving.y += 1;
+  if (hardMode) hardAxis = hardAxis === 'x' ? 'z' : 'x';
+
+  // Alternating void entry
+  const ref = placedBlocks[placedBlocks.length - 1];
+  // Easy: alternate x-axis (back-left) and z-axis (back-right); hard: alternate sides on hardAxis
+  const nextAxis = hardMode ? hardAxis : (entryCount % 2 === 0 ? 'x' : 'z');
+  const fromLeft = hardMode ? (entryCount % 2 === 0) : true;
+  entryCount++;
+
+  moving.axis = nextAxis;
+  moving.hue = blockHue(score);
+
+  if (nextAxis === 'x') {
+    moving.z = ref.z;
+    if (fromLeft) {
+      moving.x  = ref.x - MOVE_RANGE;
+      moving.dir = 1;
+    } else {
+      moving.x  = ref.x + ref.w + MOVE_RANGE - moving.w;
+      moving.dir = -1;
+    }
+  } else {
+    moving.x = ref.x;
+    if (fromLeft) {
+      moving.z  = ref.z - MOVE_RANGE;
+      moving.dir = 1;
+    } else {
+      moving.z  = ref.z + ref.d + MOVE_RANGE - moving.d;
+      moving.dir = -1;
+    }
+  }
+
+  camTargetY = moving.y;
+  checkLevelUp();
+  updateScoreDisplay();
+}
+
+// ─────────────────────────────────────────────────────
+// DRAW
+// ─────────────────────────────────────────────────────
+function drawFrame() {
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#080f20');
+  bg.addColorStop(1, '#121e35');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const { camX, camY } = getCamOffset();
+
+  // Draw placed blocks (lowest first)
+  for (const b of placedBlocks) {
+    drawBlock(b, camX, camY);
+  }
+
+  // Draw falling pieces (fading)
+  for (const p of fallingPieces) {
+    drawBlock(p, camX, camY, Math.max(0, 1 - p.elapsed / 1.0));
+  }
+
+  // Draw moving block or intro animation
+  if (gameState === 'PLAYING' && moving) {
+    drawBlock(moving, camX, camY);
+  }
+
+  // INTRO screen — draw the animated preview block (foundation already drawn above)
+  if (gameState === 'INTRO') {
+    if (moving) {
+      drawBlock(moving, camX, camY);
+    }
+
+    // Overlay text
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Title
+    ctx.font = `bold ${Math.round(W * 0.075)}px 'Comic Sans MS', cursive`;
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = 'rgba(255,215,0,0.5)';
+    ctx.shadowBlur = 18;
+    ctx.fillText('Stack Attack! 🧱', W / 2, H * 0.22);
+
+    ctx.shadowBlur = 0;
+    ctx.font = `${Math.round(W * 0.048)}px 'Comic Sans MS', cursive`;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText('Tap the button to stack blocks!', W / 2, H * 0.32);
+
+    if (best > 0) {
+      ctx.font = `${Math.round(W * 0.038)}px 'Comic Sans MS', cursive`;
+      ctx.fillStyle = 'rgba(100,200,255,0.8)';
+      ctx.fillText(`Best: ${best} blocks`, W / 2, H * 0.40);
+    }
+
+    ctx.restore();
+  }
+
+  // GAME OVER dim
+  if (gameState === 'GAME_OVER') {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// GAME LOOP
+// ─────────────────────────────────────────────────────
+let lastTs = 0;
+
+// Intro preview animation (independent of game state)
+let introX = -MOVE_RANGE;
+let introDir = 1;
+
+function gameLoop(ts) {
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+
+  if (gameState === 'PLAYING') {
+    updateMoving(dt);
+    updateFalling(dt);
+    camCurrentY += (camTargetY - camCurrentY) * Math.min(1, dt * 7);
+  } else if (gameState === 'INTRO') {
+    // Animate preview block
+    if (!placedBlocks.length) {
+      placedBlocks.push({ x: 0, z: 0, w: BLOCK_SIZE, d: BLOCK_SIZE, y: 0, hue: -1 });
+      moving = { x: introX, z: 0, w: BLOCK_SIZE, d: BLOCK_SIZE, y: 1, hue: blockHue(0), dir: 1 };
+    }
+    introX += introDir * MIN_SPEED * dt;
+    if (introX < -MOVE_RANGE)                      { introDir =  1; introX = -MOVE_RANGE; }
+    if (introX + BLOCK_SIZE > BLOCK_SIZE + MOVE_RANGE) { introDir = -1; introX = MOVE_RANGE; }
+    if (moving) moving.x = introX;
+  }
+
+  drawFrame();
+  requestAnimationFrame(gameLoop);
+}
+
+// ─────────────────────────────────────────────────────
+// CONTROLS
+// ─────────────────────────────────────────────────────
+let lastPlace = 0;
+function handlePlace() {
+  const now = Date.now();
+  if (now - lastPlace < 80) return; // debounce double-fire
+  lastPlace = now;
+  placeBlock();
+}
+
+document.getElementById('place-btn').addEventListener('touchstart', e => {
+  e.preventDefault();
+  handlePlace();
+}, { passive: false });
+document.getElementById('place-btn').addEventListener('click', handlePlace);
+
+canvas.addEventListener('pointerdown', e => {
+  // Only trigger if not overlapping the button or topbar
+  if (e.clientY < 70) return;
+  if (e.clientY > H - 90) return;
+  handlePlace();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    handlePlace();
+  }
+});
+
+// ─────────────────────────────────────────────────────
+// HARD MODE TOGGLE
+// ─────────────────────────────────────────────────────
+function setHardMode(on) {
+  hardMode = on;
+  hardAxis = 'x';
+  hardToggleBtn.textContent = on ? '😌 Easy Mode' : '🔥 Hard Mode';
+  hardToggleBtn.classList.toggle('hard-on', on);
+  // Update overlay buttons
+  document.getElementById('ov-easy-btn').style.opacity = on ? '0.5' : '1';
+  document.getElementById('ov-hard-btn').style.opacity = on ? '1' : '0.5';
+}
+
+hardToggleBtn.addEventListener('click', () => setHardMode(!hardMode));
+hardToggleBtn.addEventListener('touchstart', e => { e.preventDefault(); setHardMode(!hardMode); }, { passive: false });
+
+// ─────────────────────────────────────────────────────
+// OVERLAY BUTTONS
+// ─────────────────────────────────────────────────────
+document.getElementById('ov-play-again').addEventListener('click', () => {
+  hideGameOverOverlay();
+  startGame();
+});
+document.getElementById('ov-easy-btn').addEventListener('click', () => {
+  setHardMode(false);
+  hideGameOverOverlay();
+  startGame();
+});
+document.getElementById('ov-hard-btn').addEventListener('click', () => {
+  setHardMode(true);
+  hideGameOverOverlay();
+  startGame();
+});
+
+// ─────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────
+Hallie.initSecretTap(document.getElementById('token-display'));
+setHardMode(false);
+updateBestDisplay();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
