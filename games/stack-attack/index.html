@@ -240,7 +240,7 @@ let fallingPieces = [];
 let moving = null;
 let camTargetY = 0, camCurrentY = 0;
 let score = 0, level = 1;
-let hardMode = false, hardAxis = 'x';
+let hardMode = false;
 let entryCount = 0; // alternates which void blocks enter from
 let best = parseInt(localStorage.getItem('stack-attack-best') || '0', 10);
 let lastLevelToken = 0;
@@ -357,7 +357,6 @@ function startGame() {
   score = 0;
   level = 1;
   lastLevelToken = 1;
-  hardAxis = 'x';
   entryCount = 1; // first block entered from left (count 0); next from right
   camTargetY = 1;
   camCurrentY = 1;
@@ -456,14 +455,20 @@ function placeBlock() {
 
   score++;
   moving.y += 1;
-  if (hardMode) hardAxis = hardAxis === 'x' ? 'z' : 'x';
 
-  // Alternating void entry
+  // Next block entry direction
   const ref = placedBlocks[placedBlocks.length - 1];
-  // Easy: alternate x-axis (back-left) and z-axis (back-right); hard: alternate sides on hardAxis
-  const nextAxis = hardMode ? hardAxis : (entryCount % 2 === 0 ? 'x' : 'z');
-  const fromLeft = hardMode ? (entryCount % 2 === 0) : true;
-  entryCount++;
+  let nextAxis, fromLeft;
+  if (hardMode) {
+    // Fully random: any of the 4 void directions
+    nextAxis = Math.random() < 0.5 ? 'x' : 'z';
+    fromLeft = Math.random() < 0.5;
+  } else {
+    // Easy: alternate back-left (x) and back-right (z)
+    nextAxis = entryCount % 2 === 0 ? 'x' : 'z';
+    fromLeft = true;
+    entryCount++;
+  }
 
   moving.axis = nextAxis;
   moving.hue = blockHue(score);
@@ -629,7 +634,6 @@ document.addEventListener('keydown', e => {
 // ─────────────────────────────────────────────────────
 function setHardMode(on) {
   hardMode = on;
-  hardAxis = 'x';
   hardToggleBtn.textContent = on ? '😌 Easy Mode' : '🔥 Hard Mode';
   hardToggleBtn.classList.toggle('hard-on', on);
   // Update overlay buttons
