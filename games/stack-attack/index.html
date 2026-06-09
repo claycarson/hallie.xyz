@@ -70,9 +70,9 @@
   }
   #hard-toggle:active { background: rgba(255,255,255,0.2); }
   #hard-toggle.hard-on {
-    border-color: var(--red);
-    color: var(--red);
-    background: rgba(255,107,107,0.12);
+    border-color: var(--purple);
+    color: var(--purple);
+    background: rgba(162,155,254,0.15);
   }
 
   /* Game over overlay uses shared .overlay + .ov-card but needs a few extras */
@@ -119,7 +119,7 @@
     <button class="h-btn h-btn-green" id="ov-play-again">Play Again! 🎮</button>
     <div class="ov-mode-row">
       <button class="h-btn" id="ov-easy-btn">😌 Easy</button>
-      <button class="h-btn" id="ov-hard-btn">🔥 Hard</button>
+      <button class="h-btn" id="ov-hard-btn">🌀 Hard</button>
     </div>
   </div>
 </div>
@@ -217,13 +217,13 @@ function drawBlock(block, camX, camY, alpha) {
 // ─────────────────────────────────────────────────────
 // GAME CONSTANTS
 // ─────────────────────────────────────────────────────
-const BLOCK_SIZE     = 4.0;   // square blocks: w = d
-const MOVE_RANGE     = 5.5;
-const PERFECT_THRESH = 0.03;
-const MIN_OVERLAP    = 0.25;
-const MIN_SPEED      = 1.5;   // units/sec at block 0
-const MAX_SPEED      = 9.0;   // units/sec at block 80
-const SPEED_MAX_AT   = 80;
+const BLOCK_SIZE          = 4.0;   // square blocks: w = d
+const MOVE_RANGE          = 5.5;
+const PERFECT_THRESH      = 0.03;
+const MIN_OVERLAP         = 0.25;
+const MIN_SPEED           = 1.5;   // units/sec at block 0
+const MAX_SPEED           = 9.0;   // units/sec at block 80
+const SPEED_MAX_AT        = 80;
 
 // Hue 270° (violet) at block 0 → 0° (red) at block 70+
 // Each block = 270/70 ≈ 3.86°, so every 10 blocks = one full color step
@@ -235,6 +235,7 @@ function getSpeed() {
   return MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.min(score / SPEED_MAX_AT, 1);
 }
 
+
 // ─────────────────────────────────────────────────────
 // GAME STATE
 // ─────────────────────────────────────────────────────
@@ -244,7 +245,10 @@ let fallingPieces = [];
 let moving = null;
 let camTargetY = 0, camCurrentY = 0;
 let score = 0, level = 1;
+let mode = 'easy'; // 'easy' | 'hard' | 'super'
 let hardMode = false;
+let superHardMode = false;
+let rotationAngle = 0; // radians, Z axis (hard mode)
 let entryCount = 0; // alternates which void blocks enter from
 let best = parseInt(localStorage.getItem('stack-attack-best') || '0', 10);
 let lastLevelToken = 0;
@@ -387,6 +391,7 @@ function startGame() {
   lastLevelToken = 1;
   sessionPerfects = 0;
   sessionHighestPerfectBlock = 0;
+  rotationAngle = 0;
   entryCount = 1; // first block entered from left (count 0); next from right
   camTargetY = 1;
   camCurrentY = 1;
@@ -423,6 +428,7 @@ function placeBlock() {
     lastLevelToken = 1;
     sessionPerfects = 0;
     sessionHighestPerfectBlock = 0;
+    rotationAngle = 0;
     hardAxis = 'x';
     entryCount = 1;
     fallingPieces = [];
@@ -547,6 +553,14 @@ function drawFrame() {
 
   const { camX, camY } = getCamOffset();
 
+  // Apply board rotation in super hard mode (rotationAngle=0 during INTRO so no visual change)
+  if (superHardMode) {
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(rotationAngle);
+    ctx.translate(-W / 2, -H / 2);
+  }
+
   // Draw placed blocks (lowest first)
   for (const b of placedBlocks) {
     drawBlock(b, camX, camY);
@@ -561,6 +575,8 @@ function drawFrame() {
   if (gameState === 'PLAYING' && moving) {
     drawBlock(moving, camX, camY);
   }
+
+  if (superHardMode) ctx.restore();
 
   // INTRO screen — draw the animated preview block (foundation already drawn above)
   if (gameState === 'INTRO') {
@@ -599,6 +615,7 @@ function drawFrame() {
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(0, 0, W, H);
   }
+
 }
 
 // ─────────────────────────────────────────────────────
@@ -618,6 +635,7 @@ function gameLoop(ts) {
     updateMoving(dt);
     updateFalling(dt);
     camCurrentY += (camTargetY - camCurrentY) * Math.min(1, dt * 7);
+    if (superHardMode) rotationAngle += (3 + (level - 1) * 2) * (Math.PI / 30) * dt;
   } else if (gameState === 'INTRO') {
     // Animate preview block
     if (!placedBlocks.length) {
@@ -665,19 +683,32 @@ document.addEventListener('keydown', e => {
 });
 
 // ─────────────────────────────────────────────────────
-// HARD MODE TOGGLE
+// MODE TOGGLE (easy → hard → super → easy)
 // ─────────────────────────────────────────────────────
-function setHardMode(on) {
-  hardMode = on;
-  hardToggleBtn.textContent = on ? '😌 Easy Mode' : '🔥 Hard Mode';
-  hardToggleBtn.classList.toggle('hard-on', on);
-  // Update overlay buttons
-  document.getElementById('ov-easy-btn').style.opacity = on ? '0.5' : '1';
-  document.getElementById('ov-hard-btn').style.opacity = on ? '1' : '0.5';
+function setMode(m) {
+  mode = m;
+  hardMode = m === 'hard';
+  superHardMode = m === 'hard';
+
+  hardToggleBtn.classList.remove('hard-on');
+  if (m === 'easy') {
+    hardToggleBtn.textContent = '😌 Easy Mode';
+  } else {
+    hardToggleBtn.textContent = '🌀 Hard Mode';
+    hardToggleBtn.classList.add('hard-on');
+  }
+
+  document.getElementById('ov-easy-btn').style.opacity = m === 'easy' ? '1' : '0.5';
+  document.getElementById('ov-hard-btn').style.opacity = m === 'hard' ? '1' : '0.5';
 }
 
-hardToggleBtn.addEventListener('click', () => setHardMode(!hardMode));
-hardToggleBtn.addEventListener('touchstart', e => { e.preventDefault(); setHardMode(!hardMode); }, { passive: false });
+function cycleMode() {
+  if (gameState === 'PLAYING') return;
+  setMode(mode === 'easy' ? 'hard' : 'easy');
+}
+
+hardToggleBtn.addEventListener('click', cycleMode);
+hardToggleBtn.addEventListener('touchstart', e => { e.preventDefault(); cycleMode(); }, { passive: false });
 
 // ─────────────────────────────────────────────────────
 // OVERLAY BUTTONS
@@ -687,12 +718,12 @@ document.getElementById('ov-play-again').addEventListener('click', () => {
   startGame();
 });
 document.getElementById('ov-easy-btn').addEventListener('click', () => {
-  setHardMode(false);
+  setMode('easy');
   hideGameOverOverlay();
   startGame();
 });
 document.getElementById('ov-hard-btn').addEventListener('click', () => {
-  setHardMode(true);
+  setMode('hard');
   hideGameOverOverlay();
   startGame();
 });
@@ -701,7 +732,7 @@ document.getElementById('ov-hard-btn').addEventListener('click', () => {
 // INIT
 // ─────────────────────────────────────────────────────
 Hallie.initSecretTap(document.getElementById('token-display'));
-setHardMode(false);
+setMode('easy');
 updateBestDisplay();
 updateSecretModalStats();
 requestAnimationFrame(gameLoop);
