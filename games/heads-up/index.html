@@ -100,7 +100,6 @@
     color: #fff;
     text-shadow: 0 4px 18px rgba(0,0,0,0.35);
   }
-  #screen-play.calibrate .play-word { font-size: clamp(1.8rem, 8vw, 3.6rem); }
   .play-verdict {
     position: absolute; bottom: 8%;
     font-size: clamp(1.6rem, 8vw, 3rem);
@@ -294,14 +293,10 @@ const DECKS = {
 };
 
 // ─── Tunable tilt constants (tweak on the real iPad) ──
-// We read gravity along the screen normal (accelerationIncludingGravity.z):
-//   ~0  when the tablet is vertical on the forehead
-//   ±~9.8 when the screen is tilted to face the floor / ceiling
-// This is monotonic through a nod and orientation-independent, and the
-// "tilt down to start" step LEARNS which sign means "correct".
-const TILT_TRIGGER = 6.0;   // m/s² past level before an action fires (bigger = firmer)
-const TILT_LEVEL   = 3.5;   // must return within ± this of level to re-arm
-const ROUND_SECONDS = 60;
+const TILT_THRESHOLD = 35;   // degrees past neutral before an action fires
+const NEUTRAL_BAND   = 18;   // must return within ± this of neutral to re-arm
+const TILT_INVERT    = false; // flip to true if down/up feel backwards
+const ROUND_SECONDS  = 60;
 
 // ─── State ───────────────────────────────────
 let deckKey = null;      // current deck id (or 'everything')
@@ -313,10 +308,9 @@ let timeLeft = ROUND_SECONDS;
 let timerId = null;
 let roundActive = false;
 let paused = false;
-let calibrating = false; // waiting for the "tilt down to start" gesture
 let inputLocked = false; // brief lockout during a flash
-let armed = false;       // tilt state machine: must return to level to fire again
-let correctSign = -1;    // sign of gravity-z that means "correct" (learned at start)
+let armed = true;        // tilt state machine: must re-center to fire again
+let baseline = null;     // calibrated neutral angle
 
 document.getElementById('score').textContent = bestScore;
 
@@ -383,27 +377,17 @@ function shuffle(a) {
 }
 
 // ─── Start button → permission + countdown ───
-async function requestMotionPerms() {
-  // iOS 13+ requires requesting motion/orientation access from a user gesture.
-  const reqs = [];
-  if (typeof DeviceMotionEvent !== 'undefined' &&
-      typeof DeviceMotionEvent.requestPermission === 'function') {
-    reqs.push(DeviceMotionEvent.requestPermission().catch(() => {}));
-  }
+document.getElementById('start-btn').addEventListener('click', async () => {
+  // iOS 13+ requires requesting motion permission from a user gesture.
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    reqs.push(DeviceOrientationEvent.requestPermission().catch(() => {}));
+    try { await DeviceOrientationEvent.requestPermission(); } catch (e) { /* denied → tap fallback */ }
   }
-  await Promise.all(reqs);
-}
-
-document.getElementById('start-btn').addEventListener('click', async () => {
-  await requestMotionPerms();      // denied → tap/keyboard fallback still works
-  startCountdown(startCalibration);
+  startCountdown();
 });
 
 function startCountdown(onDone) {
-  const done = onDone || startCalibration;
+  const done = onDone || beginRound;
   const cd = document.getElementById('countdown');
   const num = document.getElementById('countdown-num');
   cd.classList.add('show');
@@ -428,41 +412,19 @@ function startCountdown(onDone) {
 }
 
 // ─── Round lifecycle ─────────────────────────
-// Step 1: show the "tilt down to start" prompt (also learns the direction).
-function startCalibration() {
+function beginRound() {
   queue = shuffle(deckWords(deckKey));
   results = [];
   score = 0;
   timeLeft = ROUND_SECONDS;
-  roundActive = false;   // not scoring yet
+  roundActive = true;
   paused = false;
   inputLocked = false;
-  armed = false;
-  calibrating = true;
+  armed = true;
+  baseline = null;   // recalibrate on next orientation reading
   document.getElementById('play-score').textContent = '0';
   updateTimerDisplay();
-  const play = document.getElementById('screen-play');
-  play.classList.remove('correct', 'pass');
-  play.classList.add('calibrate');
-  document.getElementById('play-word').textContent = 'Tilt DOWN to start! ⬇️';
-  document.getElementById('play-verdict').textContent = '';
-  document.getElementById('play-hint').textContent =
-    'Tilt the tablet down — or tap the screen — to begin';
   show('screen-play');
-}
-
-// Step 2: begin the timed round. `learnedSign` (from the start tilt) sets which
-// direction counts as "correct"; omitted on the tap/keyboard fallback.
-function startTimedRound(learnedSign) {
-  if (typeof learnedSign === 'number' && learnedSign !== 0) correctSign = learnedSign;
-  calibrating = false;
-  const play = document.getElementById('screen-play');
-  play.classList.remove('calibrate');
-  document.getElementById('play-hint').textContent =
-    'Tilt down = Got it • Tilt up = Pass • (or tap top / bottom)';
-  roundActive = true;
-  armed = false;      // must return to level before the first word counts
-  inputLocked = false;
   nextWord();
   startTimer();
 }
@@ -487,10 +449,10 @@ function pauseRound() {
 function resumeRound() {
   if (!roundActive || !paused) return;
   document.getElementById('pause-overlay').classList.remove('show');
-  // Fresh 3-2-1 so she can get the tablet back on her head (keeps the learned direction).
+  // Fresh 3-2-1 so she can get the tablet back on her head, then recalibrate tilt.
   startCountdown(() => {
     paused = false;
-    armed = false; inputLocked = false;
+    baseline = null; armed = true; inputLocked = false;
     startTimer();
   });
 }
@@ -571,29 +533,31 @@ document.getElementById('again-btn').addEventListener('click', () => {
   chooseDeck(deckKey);
 });
 
-// ─── Tilt controls: gravity along the screen normal ──
-// z ≈ 0 vertical (on forehead), swings ± when the screen faces floor/ceiling.
-function onTilt(z) {
-  // Calibration: the first firm tilt ("down") defines the "correct" direction.
-  if (calibrating) {
-    if (Math.abs(z) >= TILT_TRIGGER) startTimedRound(Math.sign(z));
-    return;
-  }
-  if (!roundActive || paused) return;
-  if (armed && !inputLocked) {
-    if (Math.abs(z) >= TILT_TRIGGER) {
-      armed = false;
-      verdict(Math.sign(z) === correctSign ? 'correct' : 'pass');
-    }
-  } else if (!armed && Math.abs(z) <= TILT_LEVEL) {
-    armed = true;   // returned to level → ready for next tilt
-  }
+// ─── Tilt controls (calibrated, orientation-aware) ──
+function tiltAngle(e) {
+  // Pick the axis that maps to a forward/back "nod" for the current orientation.
+  const o = (screen.orientation && screen.orientation.angle);
+  const ang = (o === undefined || o === null) ? (window.orientation || 0) : o;
+  let v;
+  if (ang === 90)                 v =  e.gamma;   // landscape
+  else if (ang === -90 || ang === 270) v = -e.gamma;   // landscape (other way)
+  else                            v =  e.beta;    // portrait fallback
+  return TILT_INVERT ? -v : v;
 }
 
-window.addEventListener('devicemotion', (e) => {
-  const acc = e.accelerationIncludingGravity;
-  if (!acc || acc.z == null) return;
-  onTilt(acc.z);
+window.addEventListener('deviceorientation', (e) => {
+  if (!roundActive || paused) return;
+  if (e.beta === null && e.gamma === null) return;
+  let a = tiltAngle(e);
+  if (baseline === null) { baseline = a; return; }  // calibrate neutral at round start
+  let delta = a - baseline;
+
+  if (armed && !inputLocked) {
+    if (delta >= TILT_THRESHOLD)      { armed = false; verdict('correct'); }
+    else if (delta <= -TILT_THRESHOLD){ armed = false; verdict('pass'); }
+  } else if (!armed && Math.abs(delta) <= NEUTRAL_BAND) {
+    armed = true;   // returned to center → ready for next tilt
+  }
 });
 
 // ─── Pause / resume / quit buttons ──
@@ -604,9 +568,8 @@ document.getElementById('pause-btn').addEventListener('click', (e) => {
 document.getElementById('resume-btn').addEventListener('click', resumeRound);
 document.getElementById('quit-btn').addEventListener('click', quitRound);
 
-// ─── Fallback: tap to start, then tap top = got it / bottom = pass ──
+// ─── Fallback: tap top half = got it, bottom half = pass ──
 document.getElementById('screen-play').addEventListener('click', (e) => {
-  if (calibrating) { startTimedRound(); return; }   // tap-to-start (keeps default direction)
   if (!roundActive || paused) return;
   const y = e.clientY / window.innerHeight;
   verdict(y < 0.5 ? 'correct' : 'pass');
@@ -614,9 +577,9 @@ document.getElementById('screen-play').addEventListener('click', (e) => {
 
 // ─── Fallback: keyboard (for desktop testing) ──
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && roundActive) { e.preventDefault(); paused ? resumeRound() : pauseRound(); return; }
-  if (calibrating && (e.key === 'ArrowDown' || e.key === ' ')) { e.preventDefault(); startTimedRound(); return; }
-  if (!roundActive || paused) return;
+  if (!roundActive) return;
+  if (e.key === 'Escape') { e.preventDefault(); paused ? resumeRound() : pauseRound(); return; }
+  if (paused) return;
   if (e.key === 'ArrowDown') { e.preventDefault(); verdict('correct'); }
   if (e.key === 'ArrowUp')   { e.preventDefault(); verdict('pass'); }
 });
