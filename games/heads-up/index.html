@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Heads Up! — Hallie's Games</title>
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  /* ── Screens ── */
+  .screen { display: none; width: 100%; }
+  .screen.active { display: flex; flex-direction: column; align-items: center; }
+
+  /* ── Menu (category picker) ── */
+  #screen-menu { max-width: 760px; padding: 8px 16px 40px; }
+  .hu-title {
+    font-size: clamp(2rem, 8vw, 3rem);
+    text-align: center;
+    margin: 4px 0 2px;
+  }
+  .hu-sub {
+    color: rgba(255,255,255,0.6);
+    font-size: clamp(0.95rem, 3.5vw, 1.2rem);
+    margin-bottom: 18px;
+    text-align: center;
+  }
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+    width: 100%;
+  }
+  .cat-card {
+    background: rgba(255,255,255,0.06);
+    border: 3px solid var(--cat-color, #fff);
+    border-radius: var(--radius-lg);
+    padding: 18px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform .1s, box-shadow .1s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .cat-card:hover  { transform: translateY(-3px); box-shadow: 0 6px 22px rgba(0,0,0,0.35); }
+  .cat-card:active { transform: translateY(-1px); }
+  .cat-icon { font-size: 3rem; line-height: 1; }
+  .cat-name { font-size: 1.15rem; font-weight: bold; color: var(--cat-color, #fff); }
+  .cat-count { font-size: 0.8rem; color: rgba(255,255,255,0.5); }
+  .cat-card.everything { grid-column: 1 / -1; }
+
+  /* ── Ready screen ── */
+  #screen-ready { padding: 20px 20px 40px; text-align: center; gap: 20px; max-width: 620px; }
+  .ready-icon { font-size: clamp(3.5rem, 16vw, 6rem); }
+  .ready-deck { font-size: clamp(1.3rem, 6vw, 2rem); font-weight: bold; }
+  .ready-steps {
+    display: flex; flex-direction: column; gap: 14px;
+    font-size: clamp(1.1rem, 4.5vw, 1.5rem);
+    line-height: 1.35;
+    background: rgba(255,255,255,0.06);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+  }
+  .ready-steps .big { font-size: 1.6em; }
+  .rotate-hint { color: rgba(255,255,255,0.55); font-size: 1rem; }
+
+  /* ── Play screen (full-bleed, immersive) ── */
+  #screen-play {
+    position: fixed; inset: 0; z-index: 150;
+    justify-content: center;
+    padding: 0;
+    background: var(--bg-dark);
+    transition: background .18s ease;
+  }
+  #screen-play.correct { background: #14a05a; }
+  #screen-play.pass    { background: #c96a1f; }
+  .play-timer {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    font-size: clamp(1.4rem, 6vw, 2.4rem);
+    font-weight: bold;
+    padding: 6px 22px;
+    border-radius: 999px;
+    min-width: 90px; text-align: center;
+  }
+  .play-score {
+    position: absolute; top: 18px; right: 18px;
+    font-size: clamp(1rem, 4vw, 1.4rem);
+    color: rgba(255,255,255,0.85);
+    font-weight: bold;
+  }
+  .play-word {
+    font-size: clamp(3rem, 20vw, 12rem);
+    font-weight: bold;
+    text-align: center;
+    padding: 0 20px;
+    line-height: 1.05;
+    color: #fff;
+    text-shadow: 0 4px 18px rgba(0,0,0,0.35);
+  }
+  .play-verdict {
+    position: absolute; bottom: 8%;
+    font-size: clamp(1.6rem, 8vw, 3rem);
+    font-weight: bold;
+    color: #fff;
+    opacity: 0;
+    transition: opacity .12s;
+  }
+  #screen-play.correct .play-verdict,
+  #screen-play.pass .play-verdict { opacity: 1; }
+  .play-hint {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.4);
+    font-size: 0.85rem; text-align: center; width: 90%;
+  }
+  .play-pause {
+    position: absolute; top: 12px; left: 12px; z-index: 5;
+    width: 52px; height: 52px; border: none; border-radius: 999px;
+    background: rgba(0,0,0,0.35); color: #fff;
+    font-size: 1.4rem; cursor: pointer;
+  }
+  .play-pause:active { transform: scale(0.94); }
+
+  /* ── Pause overlay ── */
+  #pause-overlay {
+    position: fixed; inset: 0; z-index: 170;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.82);
+  }
+  #pause-overlay.show { display: flex; }
+  .pause-card {
+    display: flex; flex-direction: column; gap: 16px; align-items: center;
+    background: var(--bg-mid); padding: 30px 40px;
+    border-radius: var(--radius-lg); text-align: center;
+    min-width: 240px;
+  }
+  .pause-title { font-size: clamp(1.6rem, 7vw, 2.4rem); }
+  .pause-card .h-btn { width: 100%; }
+
+  /* ── Countdown overlay ── */
+  #countdown {
+    position: fixed; inset: 0; z-index: 160;
+    display: none; align-items: center; justify-content: center;
+    background: var(--bg-dark);
+  }
+  #countdown.show { display: flex; }
+  #countdown-num {
+    font-size: clamp(6rem, 40vw, 20rem);
+    font-weight: bold;
+    color: var(--gold);
+    animation: cd-pop .8s ease;
+  }
+  @keyframes cd-pop {
+    0%   { transform: scale(0.3); opacity: 0; }
+    40%  { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* ── Results screen ── */
+  #screen-done { padding: 20px 16px 40px; gap: 16px; max-width: 560px; text-align: center; }
+  .done-title { font-size: clamp(2rem, 9vw, 3rem); }
+  .done-score { font-size: clamp(1.2rem, 5vw, 1.6rem); color: rgba(255,255,255,0.8); }
+  .done-list {
+    width: 100%;
+    max-height: 46vh; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 8px;
+    background: rgba(255,255,255,0.05);
+    border-radius: var(--radius-lg);
+    padding: 12px;
+  }
+  .done-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 12px;
+    font-size: 1.2rem;
+  }
+  .done-row .w { font-weight: bold; }
+  .done-btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .h-btn-blue {
+    background: linear-gradient(135deg, var(--blue), #2a86c8);
+    color: var(--bg-dark);
+    font-size: clamp(1rem, 3.5vw, 1.3rem);
+    box-shadow: 0 4px 20px rgba(100,200,255,0.35);
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR (hidden during play/countdown, but kept in DOM for token updates) -->
+<div class="topbar" id="topbar">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    ⭐ Best: <span id="score">0</span>
+  </div>
+  <a href="../../" class="back-btn">← Games</a>
+</div>
+
+<!-- ─── SCREEN 1: CATEGORY PICKER ─── -->
+<div class="screen active" id="screen-menu">
+  <div class="hu-title rainbow-text">🙈 Heads Up! 🙈</div>
+  <div class="hu-sub">Put the tablet on your head and guess the word!</div>
+  <div class="cat-grid" id="cat-grid"><!-- cards injected by JS --></div>
+</div>
+
+<!-- ─── SCREEN 2: GET READY ─── -->
+<div class="screen" id="screen-ready">
+  <div class="ready-icon" id="ready-icon">🙈</div>
+  <div class="ready-deck" id="ready-deck">Animals</div>
+  <div class="ready-steps">
+    <div>Put the tablet on your <b>forehead</b>! 🙌</div>
+    <div><span class="big">⬇️</span> Tilt <b>DOWN</b> when you <b>get it</b>!</div>
+    <div><span class="big">⬆️</span> Tilt <b>UP</b> to <b>skip</b>.</div>
+  </div>
+  <div class="rotate-hint">📱 Turn your tablet sideways for the best fun!</div>
+  <button class="h-btn h-btn-green" id="start-btn">Start! ▶️</button>
+</div>
+
+<!-- ─── SCREEN 3: PLAY ─── -->
+<div class="screen" id="screen-play">
+  <button class="play-pause" id="pause-btn" aria-label="Pause">⏸️</button>
+  <div class="play-timer" id="play-timer">1:00</div>
+  <div class="play-score">⭐ <span id="play-score">0</span></div>
+  <div class="play-word" id="play-word">Ready?</div>
+  <div class="play-verdict" id="play-verdict"></div>
+  <div class="play-hint">Tilt down = Got it &nbsp;•&nbsp; Tilt up = Pass &nbsp;•&nbsp; (or tap top / bottom of screen)</div>
+</div>
+
+<!-- ─── PAUSE OVERLAY ─── -->
+<div id="pause-overlay">
+  <div class="pause-card">
+    <div class="pause-title">⏸️ Paused</div>
+    <button class="h-btn h-btn-green" id="resume-btn">Keep Playing ▶️</button>
+    <button class="h-btn h-btn-blue" id="quit-btn">Quit 🚪</button>
+  </div>
+</div>
+
+<!-- ─── COUNTDOWN OVERLAY ─── -->
+<div id="countdown"><div id="countdown-num">3</div></div>
+
+<!-- ─── SCREEN 4: RESULTS ─── -->
+<div class="screen" id="screen-done">
+  <div class="done-title">🎉 Time's Up! 🎉</div>
+  <div class="done-score" id="done-score">You got 0!</div>
+  <div class="done-list" id="done-list"></div>
+  <div class="done-btns">
+    <button class="h-btn h-btn-green" id="again-btn">Play Again ▶️</button>
+    <a href="../../" class="h-btn h-btn-blue" style="text-decoration:none;">← Games</a>
+  </div>
+</div>
+
+<!-- SECRET MODAL -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- FLASH + CONFETTI -->
+<div class="flash-msg" id="flash-msg"></div>
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─── Word decks ──────────────────────────────
+const DECKS = {
+  animals:  { name:'Animals',       icon:'🐶', color:'#64c8ff',
+              words:['Dog','Cat','Fish','Bird','Duck','Cow','Pig','Horse','Frog','Bear',
+                     'Lion','Tiger','Monkey','Bunny','Mouse','Snake','Turtle','Bee','Spider','Elephant'] },
+  foods:    { name:'Foods',         icon:'🍎', color:'#4cff8c',
+              words:['Apple','Banana','Pizza','Cookie','Cake','Ice cream','Milk','Cheese','Bread','Egg',
+                     'Carrot','Corn','Grapes','Watermelon','Orange','Hot dog','Popcorn','Taco','Donut','Pancake'] },
+  feelings: { name:'Feelings',      icon:'😊', color:'#a29bfe',
+              words:['Happy','Sad','Mad','Silly','Scared','Sleepy','Excited','Surprised','Shy','Proud',
+                     'Tired','Brave','Worried','Calm'] },
+  things:   { name:'Things',        icon:'🧸', color:'#ffd700',
+              words:['Ball','Book','Chair','Table','Bed','Pillow','Toothbrush','Backpack','Hat','Shoes',
+                     'Bike','Car','Airplane','Train','Umbrella','Flashlight','Clock','Kite','Robot','Bubble'] },
+  actions:  { name:'Actions',       icon:'🎬', color:'#ff9f43',
+              words:['Jump','Run','Dance','Swim','Hop','Skip','Clap','Wave','Laugh','Cry',
+                     'Read','Write','Sing','Sleep','Eat','Drink','Brush','Dig','Throw','Catch'] },
+  people:   { name:'People & Jobs', icon:'👑', color:'#ff6bd6',
+              words:['Mom','Dad','Baby','Teacher','Doctor','Firefighter','Police','Chef','Pirate','Princess',
+                     'Superhero','Farmer','Mail man','Astronaut','Magician'] },
+};
+
+// ─── Tunable tilt constants (tweak on the real iPad) ──
+const TILT_THRESHOLD = 35;   // degrees past neutral before an action fires
+const NEUTRAL_BAND   = 18;   // must return within ± this of neutral to re-arm
+const TILT_INVERT    = false; // flip to true if down/up feel backwards
+const ROUND_SECONDS  = 60;
+
+// ─── State ───────────────────────────────────
+let deckKey = null;      // current deck id (or 'everything')
+let queue = [];          // shuffled remaining words
+let results = [];        // { word, got:true/false } for this round
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('headsup_best') || '0', 10);
+let timeLeft = ROUND_SECONDS;
+let timerId = null;
+let roundActive = false;
+let paused = false;
+let inputLocked = false; // brief lockout during a flash
+let armed = true;        // tilt state machine: must re-center to fire again
+let baseline = null;     // calibrated neutral angle
+
+document.getElementById('score').textContent = bestScore;
+
+// ─── Screen switching ────────────────────────
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  // Hide topbar while playing for a clean, immersive look
+  document.getElementById('topbar').style.display = (id === 'screen-play') ? 'none' : '';
+}
+
+// ─── Build category picker ───────────────────
+(function buildMenu() {
+  const grid = document.getElementById('cat-grid');
+  for (const [key, d] of Object.entries(DECKS)) {
+    const c = document.createElement('div');
+    c.className = 'cat-card';
+    c.style.setProperty('--cat-color', d.color);
+    c.innerHTML =
+      `<div class="cat-icon">${d.icon}</div>` +
+      `<div class="cat-name">${d.name}</div>` +
+      `<div class="cat-count">${d.words.length} words</div>`;
+    c.addEventListener('click', () => chooseDeck(key));
+    grid.appendChild(c);
+  }
+  // Everything card
+  const total = Object.values(DECKS).reduce((n, d) => n + d.words.length, 0);
+  const e = document.createElement('div');
+  e.className = 'cat-card everything';
+  e.style.setProperty('--cat-color', '#ff9ff3');
+  e.innerHTML =
+    `<div class="cat-icon">🌈</div>` +
+    `<div class="cat-name">Everything!</div>` +
+    `<div class="cat-count">${total} words</div>`;
+  e.addEventListener('click', () => chooseDeck('everything'));
+  grid.appendChild(e);
+})();
+
+function deckWords(key) {
+  if (key === 'everything') return Object.values(DECKS).flatMap(d => d.words);
+  return DECKS[key].words.slice();
+}
+function deckMeta(key) {
+  if (key === 'everything') return { name:'Everything', icon:'🌈' };
+  return DECKS[key];
+}
+
+// ─── Ready screen ────────────────────────────
+function chooseDeck(key) {
+  deckKey = key;
+  const m = deckMeta(key);
+  document.getElementById('ready-icon').textContent = m.icon;
+  document.getElementById('ready-deck').textContent = m.name;
+  show('screen-ready');
+}
+
+// ─── Shuffle helper ──────────────────────────
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ─── Start button → permission + countdown ───
+document.getElementById('start-btn').addEventListener('click', async () => {
+  // iOS 13+ requires requesting motion permission from a user gesture.
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { await DeviceOrientationEvent.requestPermission(); } catch (e) { /* denied → tap fallback */ }
+  }
+  startCountdown();
+});
+
+function startCountdown(onDone) {
+  const done = onDone || beginRound;
+  const cd = document.getElementById('countdown');
+  const num = document.getElementById('countdown-num');
+  cd.classList.add('show');
+  let n = 3;
+  num.textContent = n;
+  const tick = setInterval(() => {
+    n--;
+    if (n === 0) {
+      num.textContent = 'GO!';
+    } else if (n < 0) {
+      clearInterval(tick);
+      cd.classList.remove('show');
+      done();
+      return;
+    } else {
+      num.textContent = n;
+    }
+    num.style.animation = 'none';
+    void num.offsetWidth;      // restart pop animation
+    num.style.animation = '';
+  }, 800);
+}
+
+// ─── Round lifecycle ─────────────────────────
+function beginRound() {
+  queue = shuffle(deckWords(deckKey));
+  results = [];
+  score = 0;
+  timeLeft = ROUND_SECONDS;
+  roundActive = true;
+  paused = false;
+  inputLocked = false;
+  armed = true;
+  baseline = null;   // recalibrate on next orientation reading
+  document.getElementById('play-score').textContent = '0';
+  updateTimerDisplay();
+  show('screen-play');
+  nextWord();
+  startTimer();
+}
+
+function startTimer() {
+  clearInterval(timerId);
+  timerId = setInterval(() => {
+    timeLeft--;
+    updateTimerDisplay();
+    if (timeLeft <= 0) endRound();
+  }, 1000);
+}
+
+// ─── Pause / resume / quit ───────────────────
+function pauseRound() {
+  if (!roundActive || paused) return;
+  paused = true;
+  clearInterval(timerId);
+  document.getElementById('pause-overlay').classList.add('show');
+}
+
+function resumeRound() {
+  if (!roundActive || !paused) return;
+  document.getElementById('pause-overlay').classList.remove('show');
+  // Fresh 3-2-1 so she can get the tablet back on her head, then recalibrate tilt.
+  startCountdown(() => {
+    paused = false;
+    baseline = null; armed = true; inputLocked = false;
+    startTimer();
+  });
+}
+
+function quitRound() {
+  paused = false;
+  roundActive = false;
+  clearInterval(timerId);
+  document.getElementById('pause-overlay').classList.remove('show');
+  show('screen-menu');
+}
+
+function updateTimerDisplay() {
+  const s = Math.max(0, timeLeft);
+  const m = Math.floor(s / 60);
+  document.getElementById('play-timer').textContent =
+    m + ':' + String(s % 60).padStart(2, '0');
+}
+
+function nextWord() {
+  if (queue.length === 0) queue = shuffle(deckWords(deckKey)); // never run dry
+  const w = queue.pop();
+  currentWord = w;
+  document.getElementById('play-word').textContent = w;
+}
+let currentWord = '';
+
+function verdict(kind) {
+  // kind: 'correct' | 'pass'
+  if (!roundActive || paused || inputLocked) return;
+  inputLocked = true;
+  results.push({ word: currentWord, got: kind === 'correct' });
+  if (kind === 'correct') {
+    score++;
+    document.getElementById('play-score').textContent = score;
+  }
+  const play = document.getElementById('screen-play');
+  const vEl = document.getElementById('play-verdict');
+  vEl.textContent = kind === 'correct' ? '✅ Got it!' : '⏭️ Pass';
+  play.classList.add(kind);
+  setTimeout(() => {
+    play.classList.remove('correct', 'pass');
+    if (roundActive) nextWord();
+    inputLocked = false;
+  }, 550);
+}
+
+function endRound() {
+  roundActive = false;
+  clearInterval(timerId);
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('headsup_best', bestScore);
+    document.getElementById('score').textContent = bestScore;
+  }
+  // Award one token per correct guess
+  if (score > 0) Hallie.addSession(score);
+  // Build results list
+  document.getElementById('done-score').textContent =
+    score === 1 ? 'You got 1! 🌟' : `You got ${score}! 🌟`;
+  const list = document.getElementById('done-list');
+  list.innerHTML = '';
+  if (results.length === 0) {
+    list.innerHTML = '<div class="done-row"><span class="w">No words yet — try again!</span></div>';
+  }
+  for (const r of results) {
+    const row = document.createElement('div');
+    row.className = 'done-row';
+    row.innerHTML = `<span class="w">${r.word}</span><span>${r.got ? '✅' : '⏭️'}</span>`;
+    list.appendChild(row);
+  }
+  show('screen-done');
+  if (score > 0) Hallie.confetti();
+}
+
+document.getElementById('again-btn').addEventListener('click', () => {
+  // Same deck → straight back to the ready screen
+  chooseDeck(deckKey);
+});
+
+// ─── Tilt controls (calibrated, orientation-aware) ──
+function tiltAngle(e) {
+  // Pick the axis that maps to a forward/back "nod" for the current orientation.
+  const o = (screen.orientation && screen.orientation.angle);
+  const ang = (o === undefined || o === null) ? (window.orientation || 0) : o;
+  let v;
+  if (ang === 90)                 v =  e.gamma;   // landscape
+  else if (ang === -90 || ang === 270) v = -e.gamma;   // landscape (other way)
+  else                            v =  e.beta;    // portrait fallback
+  return TILT_INVERT ? -v : v;
+}
+
+window.addEventListener('deviceorientation', (e) => {
+  if (!roundActive || paused) return;
+  if (e.beta === null && e.gamma === null) return;
+  let a = tiltAngle(e);
+  if (baseline === null) { baseline = a; return; }  // calibrate neutral at round start
+  let delta = a - baseline;
+
+  if (armed && !inputLocked) {
+    if (delta >= TILT_THRESHOLD)      { armed = false; verdict('correct'); }
+    else if (delta <= -TILT_THRESHOLD){ armed = false; verdict('pass'); }
+  } else if (!armed && Math.abs(delta) <= NEUTRAL_BAND) {
+    armed = true;   // returned to center → ready for next tilt
+  }
+});
+
+// ─── Pause / resume / quit buttons ──
+document.getElementById('pause-btn').addEventListener('click', (e) => {
+  e.stopPropagation();   // don't let the tap register as a verdict
+  pauseRound();
+});
+document.getElementById('resume-btn').addEventListener('click', resumeRound);
+document.getElementById('quit-btn').addEventListener('click', quitRound);
+
+// ─── Fallback: tap top half = got it, bottom half = pass ──
+document.getElementById('screen-play').addEventListener('click', (e) => {
+  if (!roundActive || paused) return;
+  const y = e.clientY / window.innerHeight;
+  verdict(y < 0.5 ? 'correct' : 'pass');
+});
+
+// ─── Fallback: keyboard (for desktop testing) ──
+document.addEventListener('keydown', (e) => {
+  if (!roundActive) return;
+  if (e.key === 'Escape') { e.preventDefault(); paused ? resumeRound() : pauseRound(); return; }
+  if (paused) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); verdict('correct'); }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); verdict('pass'); }
+});
+
+// ─── Init ────────────────────────────────────
+Hallie.initSecretTap(document.getElementById('token-display'));
+</script>
+</body>
+</html>
