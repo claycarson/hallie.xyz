@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Rainbow Keys — Hallie's Games</title>
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  :root {
+    /* scale with the SMALLER of width/height so it fills big screens
+       without overflowing short ones */
+    --key: clamp(34px, min(7.6vw, 9.5vh), 84px);
+    --gap: clamp(5px, min(1.1vw, 1.4vh), 11px);
+    --hand-w: clamp(100px, min(19vw, 24vh), 240px);
+    /* finger colors (mirrored across both hands) */
+    --f-pinky:  #ff6b9d;
+    --f-ring:   #ffd166;
+    --f-middle: #6bd968;
+    --f-index:  #64c8ff;
+    --f-thumb:  #c9a0ff;
+  }
+
+  body { justify-content: flex-start; }
+
+  #game-area {
+    width: 100%;
+    max-width: 1100px;
+    flex: 1 1 auto;              /* fill remaining height below the topbar */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;    /* vertically center the trio */
+    gap: clamp(12px, 3.5vh, 40px);
+    padding: 6px 10px 20px;
+  }
+
+  /* ── Prompt ── */
+  #prompt-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(8px, 1.6vh, 16px);
+    min-height: clamp(120px, 22vh, 220px);
+    justify-content: center;
+  }
+  #letterPrompt {
+    font-size: clamp(3.5rem, min(14vw, 20vh), 9rem);
+    font-weight: bold;
+    line-height: 1;
+    text-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    transition: transform .12s;
+  }
+  #letterPrompt.pop { transform: scale(1.18); }
+  #wordPrompt { display: none; }
+  #hint {
+    font-size: clamp(1.15rem, min(3.4vw, 4.2vh), 1.9rem);
+    color: rgba(255,255,255,0.85);
+    text-align: center;
+    min-height: 1.4em;
+  }
+  /* word/sentence tiles sized off --key so letters read ~2x the keycap glyph */
+  #wordPrompt .wl {
+    width: calc(var(--key) * 1.35);
+    height: calc(var(--key) * 1.65);
+    font-size: calc(var(--key) * 0.85);   /* keycap glyph is 0.42*--key → ~2x */
+    border-radius: 14px;
+  }
+  #hint .fname { font-weight: bold; }
+
+  /* ── Hands ── */
+  .hands {
+    display: flex;
+    gap: clamp(18px, 7vw, 64px);
+    justify-content: center;
+    align-items: flex-end;
+  }
+  .hand {
+    position: relative;
+    width: var(--hand-w);
+    height: calc(var(--hand-w) * 1.05);
+  }
+  .hand-R { transform: scaleX(-1); }
+  .palm {
+    position: absolute;
+    bottom: 0; left: 11%;
+    width: 78%; height: 44%;
+    background: rgba(255,255,255,0.10);
+    border: 2px solid rgba(255,255,255,0.18);
+    border-radius: 22% 22% 40% 40% / 14% 14% 40% 40%;
+  }
+  .finger {
+    position: absolute;
+    border-radius: 45% 45% 30% 30%;
+    border: 2px solid rgba(0,0,0,0.22);
+    opacity: 0.5;
+    transition: opacity .15s, transform .15s, box-shadow .15s, filter .15s;
+  }
+  .finger[data-finger="pinky"]  { background: var(--f-pinky); }
+  .finger[data-finger="ring"]   { background: var(--f-ring); }
+  .finger[data-finger="middle"] { background: var(--f-middle); }
+  .finger[data-finger="index"]  { background: var(--f-index); }
+  .finger[data-finger="thumb"]  { background: var(--f-thumb); }
+  .finger.active {
+    opacity: 1;
+    filter: brightness(1.15);
+    box-shadow: 0 0 14px 3px currentColor;
+    animation: finger-bounce .6s ease-in-out infinite;
+    z-index: 3;
+  }
+  @keyframes finger-bounce {
+    0%,100% { transform: translateY(0); }
+    50%     { transform: translateY(-16%); }
+  }
+  /* active glow color follows finger color via currentColor */
+  .finger[data-finger="pinky"].active  { color: var(--f-pinky); }
+  .finger[data-finger="ring"].active   { color: var(--f-ring); }
+  .finger[data-finger="middle"].active { color: var(--f-middle); }
+  .finger[data-finger="index"].active  { color: var(--f-index); }
+  .finger[data-finger="thumb"].active  { color: var(--f-thumb); }
+
+  /* ── Keyboard ── */
+  #keyboard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    align-items: center;
+  }
+  .krow { display: flex; gap: var(--gap); }
+  .rk-key {
+    width: var(--key);
+    height: var(--key);
+    border-radius: 10px;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--key) * 0.42);
+    font-weight: bold;
+    color: #fff;
+    position: relative;
+    transition: transform .1s, box-shadow .15s, background .15s;
+  }
+  .rk-key.homerow::after {
+    content: "";
+    position: absolute;
+    bottom: 5px;
+    width: 34%; height: 3px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.5);
+  }
+  .rk-key.target {
+    animation: key-glow 0.9s ease-in-out infinite;
+    transform: translateY(-3px);
+    z-index: 2;
+  }
+  @keyframes key-glow {
+    0%,100% { box-shadow: 0 0 8px 2px rgba(255,255,255,0.5); }
+    50%     { box-shadow: 0 0 20px 6px rgba(255,255,255,0.95); }
+  }
+  .rk-key.correct {
+    background: rgba(76,255,140,0.55) !important;
+    border-color: var(--green) !important;
+    box-shadow: 0 0 18px 5px rgba(76,255,140,0.7);
+  }
+  .rk-key.wrong {
+    background: rgba(255,107,107,0.55) !important;
+    border-color: var(--red) !important;
+  }
+  .rk-space {
+    width: calc(var(--key) * 5.6);
+    height: calc(var(--key) * 0.7);
+    border-radius: 10px;
+    border: 2px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05);
+    position: relative;
+    transition: transform .1s, box-shadow .15s, background .15s;
+  }
+  .rk-space.target {
+    animation: key-glow 0.9s ease-in-out infinite;
+    transform: translateY(-3px);
+  }
+  .rk-space.correct { background: rgba(76,255,140,0.55) !important; border-color: var(--green) !important; }
+  .rk-space.wrong   { background: rgba(255,107,107,0.55) !important; border-color: var(--red) !important; }
+
+  /* sentence mode: smaller tiles + word grouping + space tiles */
+  #wordPrompt.sentence .wl {
+    width: calc(var(--key) * 1.05);
+    height: calc(var(--key) * 1.3);
+    font-size: calc(var(--key) * 0.68);
+  }
+  .wl-word { display: inline-flex; gap: clamp(3px, 1vw, 8px); }
+  .wl.wl-space {
+    width: calc(var(--key) * 0.5) !important;
+    color: rgba(255,255,255,0.35);
+    border-style: dashed;
+  }
+
+  /* ── Timer pill ── */
+  .timer-display {
+    background: rgba(162,155,254,0.16);
+    border: 2px solid var(--purple);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: clamp(0.85rem, 3vw, 1.1rem);
+    color: #fff;
+  }
+  .timer-display.low { border-color: var(--red); color: var(--red); animation: pulse .5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+
+  .rk-menu {
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 20px;
+    padding: 6px 12px;
+    font-family: var(--font);
+    font-size: clamp(0.8rem, 2.5vw, 1rem);
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+  }
+
+  /* ── Intro / stage chooser ── */
+  .stage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .stage-btn {
+    border: 3px solid var(--card-color, var(--blue));
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+    border-radius: 14px;
+    padding: 12px 8px;
+    font-family: var(--font);
+    font-size: clamp(0.95rem, 3.4vw, 1.15rem);
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: transform .12s, background .12s;
+  }
+  .stage-btn:hover { transform: translateY(-3px); background: rgba(255,255,255,0.12); }
+  .stage-btn .emo { font-size: 1.6rem; }
+  .stage-btn .sub { font-size: 0.72rem; font-weight: normal; color: rgba(255,255,255,0.6); }
+
+  .clock-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 30px;
+    padding: 8px 18px;
+    font-size: clamp(0.95rem, 3.4vw, 1.15rem);
+    cursor: pointer;
+    color: #fff;
+    margin-top: 6px;
+  }
+  .clock-toggle.on {
+    border-color: var(--gold);
+    background: rgba(255,215,0,0.14);
+    color: var(--gold);
+  }
+  .clock-toggle .knob {
+    width: 46px; height: 26px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.2);
+    position: relative;
+    transition: background .15s;
+    flex-shrink: 0;
+  }
+  .clock-toggle.on .knob { background: var(--gold); }
+  .clock-toggle .knob::after {
+    content: "";
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .15s;
+  }
+  .clock-toggle.on .knob::after { transform: translateX(20px); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span>
+  </div>
+  <div class="score-display">
+    ⭐ <span id="score">0</span>
+  </div>
+  <div class="timer-display" id="timer-display" style="display:none;">
+    ⏱ <span id="timer">60</span>
+  </div>
+  <button class="rk-menu" id="menuBtn">☰ Menu</button>
+  <a href="../../" class="back-btn">← Games</a>
+</div>
+
+<!-- GAME AREA -->
+<div id="game-area">
+
+  <div id="prompt-area">
+    <div id="letterPrompt">⌨️</div>
+    <div class="word-letters" id="wordPrompt"></div>
+    <div id="hint">Press ☰ Menu to pick a game!</div>
+  </div>
+
+  <div class="hands" id="hands"></div>
+
+  <div id="keyboard"></div>
+
+</div>
+
+<!-- INTRO / STAGE CHOOSER -->
+<div class="overlay" id="introOverlay">
+  <div class="ov-card">
+    <div class="ov-title">⌨️ Rainbow Keys 🌈</div>
+    <div style="color:rgba(255,255,255,0.75); font-size:clamp(0.95rem,3.4vw,1.15rem); line-height:1.5;">
+      Press the right key with the right finger!<br>Pick where to start:
+    </div>
+    <div class="stage-grid" id="stageGrid"></div>
+    <div class="clock-toggle" id="clockToggle">
+      <div class="knob"></div>
+      <span>⏱ Beat the clock</span>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS (timed round) -->
+<div class="overlay" id="resultsOverlay">
+  <div class="ov-card">
+    <div class="ov-title">⏱ Time's up! 🎉</div>
+    <div class="ov-word" id="resultsCount">0 letters!</div>
+    <div style="color:rgba(255,255,255,0.75); margin-bottom:18px;">Great typing!</div>
+    <button class="h-btn h-btn-green" id="resultsAgain">Play again</button>
+  </div>
+</div>
+
+<!-- SECRET MODAL -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- FLASH + CONFETTI -->
+<div class="flash-msg" id="flash-msg"></div>
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─── Finger map (letter → which finger + hand) ──────────────
+const FINGER = {};
+function assign(letters, hand, finger) {
+  for (const ch of letters) FINGER[ch] = { hand, finger };
+}
+assign('qaz', 'L', 'pinky');
+assign('wsx', 'L', 'ring');
+assign('edc', 'L', 'middle');
+assign('rfvtgb', 'L', 'index');
+assign('yhnujm', 'R', 'index');
+assign('ik', 'R', 'middle');
+assign('ol', 'R', 'ring');
+assign('p', 'R', 'pinky');
+
+const FINGER_NAME = { pinky:'pinky', ring:'ring', middle:'tall', index:'pointer', thumb:'thumb' };
+const HOME_ROW = 'asdfghjkl';
+
+// ─── Word lists (lowercase letters only — reused from Letter Muncher) ──
+const LITTLE_WORDS = ['cat','dog','sun','hat','bug','cup','bed','red','hop','pig','fox','wet','hot','run','map','pan','top','big','sit','nap','jam','van','ten','hen','pup','mud','hug','log','wig','zip','jet','web','lip','tub','box','fix','mix','fun','fan','bat','rat','tap','dig','sob'];
+const BIG_WORDS = ['love','jump','play','look','help','cake','blue','tree','frog','star','bird','fish','book','rain','moon','good','make','back','just','here','more','find','ride','drop','skip','ball','call','door','fall','food','give','glad','glow','gold','grow','hand','home','kind','lamp','land','left','line','milk','name','nest','nice','park','pink','pond','road','rock','room','rope','seed','send'];
+const SENTENCES = ['i see a cat','the sun is hot','we can run','my dog is big','i like to play','the frog can hop','i love my mom','we go to bed','a bug is red','my hat is on','the pig is fat','i can see you','we had fun','the fox ran','the cat sat'];
+
+// ─── Stages ──────────────────────────────────────────────────
+const STAGES = [
+  { id:'home',   name:'Home Row',    emo:'🏠', sub:'a s d f  j k l', pool:'asdfghjkl', type:'letters' },
+  { id:'top',    name:'Top Row',     emo:'⬆️', sub:'q w e r t y…',   pool:'qwertyuiopasdfghjkl', type:'letters' },
+  { id:'bottom', name:'Bottom Row',  emo:'⬇️', sub:'all the keys',   pool:'abcdefghijklmnopqrstuvwxyz', type:'letters' },
+  { id:'little', name:'Little Words',emo:'🐱', sub:'cat  dog  sun',  words:LITTLE_WORDS, type:'words' },
+  { id:'big',    name:'Big Words',   emo:'⭐', sub:'jump  play',      words:BIG_WORDS, type:'words' },
+  { id:'sent',   name:'Sentences',   emo:'📖', sub:'the cat sat',     sentences:SENTENCES, type:'sentence' },
+];
+
+// ─── State ───────────────────────────────────────────────────
+let stage = null;      // current STAGES entry
+let target = null;     // expected letter (lowercase)
+let word = null;       // current word string (word stages)
+let wordIdx = 0;
+let playing = false;
+let score = 0;
+let letterStreak = 0;  // for milestone tokens in letter stages
+let timed = false;
+let roundCount = 0;
+let timeLeft = 0;
+let timerId = null;
+
+const el = id => document.getElementById(id);
+
+// ─── Build hands ─────────────────────────────────────────────
+const FINGER_LAYOUT = [
+  { finger:'pinky',  left:10, bottom:40, w:15, h:24 },
+  { finger:'ring',   left:29, bottom:40, w:16, h:38 },
+  { finger:'middle', left:48, bottom:40, w:16, h:46 },
+  { finger:'index',  left:67, bottom:40, w:16, h:36 },
+];
+const THUMB_LAYOUT = { finger:'thumb', left:80, bottom:12, w:14, h:22, rot:38 };
+
+function buildHand(hand) {
+  const h = document.createElement('div');
+  h.className = 'hand hand-' + hand;
+  const palm = document.createElement('div');
+  palm.className = 'palm';
+  h.appendChild(palm);
+  const mk = (cfg) => {
+    const f = document.createElement('div');
+    f.className = 'finger';
+    f.dataset.hand = hand;
+    f.dataset.finger = cfg.finger;
+    f.style.left = cfg.left + '%';
+    f.style.bottom = cfg.bottom + '%';
+    f.style.width = cfg.w + '%';
+    f.style.height = cfg.h + '%';
+    if (cfg.rot) f.style.transform = `rotate(${hand==='L'?cfg.rot:cfg.rot}deg)`;
+    h.appendChild(f);
+  };
+  FINGER_LAYOUT.forEach(mk);
+  mk(THUMB_LAYOUT);
+  return h;
+}
+el('hands').append(buildHand('L'), buildHand('R'));
+
+function highlightFinger(ch) {
+  document.querySelectorAll('.finger.active').forEach(f => f.classList.remove('active'));
+  if (ch === ' ') {
+    document.querySelectorAll('.finger[data-finger="thumb"]').forEach(f => f.classList.add('active'));
+    el('hint').innerHTML = `👍 Use your <span class="fname">thumb</span> for space`;
+    return;
+  }
+  const info = FINGER[ch];
+  if (!info) return;
+  const f = document.querySelector(`.finger[data-hand="${info.hand}"][data-finger="${info.finger}"]`);
+  if (f) f.classList.add('active');
+  const side = info.hand === 'L' ? 'left' : 'right';
+  el('hint').innerHTML = `👉 Use your <span class="fname">${side} ${FINGER_NAME[info.finger]}</span> finger`;
+}
+
+// ─── Build keyboard ──────────────────────────────────────────
+const KEY_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+const keyEls = {};
+function buildKeyboard() {
+  const kb = el('keyboard');
+  KEY_ROWS.forEach(row => {
+    const r = document.createElement('div');
+    r.className = 'krow';
+    for (const ch of row) {
+      const k = document.createElement('div');
+      k.className = 'rk-key';
+      if (HOME_ROW.includes(ch)) k.classList.add('homerow');
+      k.textContent = ch.toUpperCase();
+      k.dataset.key = ch;
+      const info = FINGER[ch];
+      if (info) {
+        const c = getComputedStyle(document.documentElement).getPropertyValue('--f-' + info.finger).trim();
+        k.style.background = hexA(c, 0.22);
+        k.style.borderColor = hexA(c, 0.7);
+      }
+      r.appendChild(k);
+      keyEls[ch] = k;
+    }
+    kb.appendChild(r);
+  });
+  // spacebar row — thumb key, usable as a target in sentence mode
+  const sr = document.createElement('div');
+  sr.className = 'krow';
+  const sp = document.createElement('div');
+  sp.className = 'rk-space';
+  sp.dataset.key = ' ';
+  const tc = getComputedStyle(document.documentElement).getPropertyValue('--f-thumb').trim();
+  sp.style.background = hexA(tc, 0.22);
+  sp.style.borderColor = hexA(tc, 0.7);
+  keyEls[' '] = sp;
+  sr.appendChild(sp);
+  kb.appendChild(sr);
+}
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+buildKeyboard();
+
+// ─── Build stage chooser ─────────────────────────────────────
+function buildStageChooser() {
+  const g = el('stageGrid');
+  STAGES.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'stage-btn';
+    b.innerHTML = `<span class="emo">${s.emo}</span>${s.name}<span class="sub">${s.sub}</span>`;
+    b.addEventListener('click', () => startStage(s));
+    g.appendChild(b);
+  });
+}
+buildStageChooser();
+
+el('clockToggle').addEventListener('click', () => {
+  timed = !timed;
+  el('clockToggle').classList.toggle('on', timed);
+});
+
+// ─── Target / prompt ─────────────────────────────────────────
+function setTarget(ch) {
+  target = ch;
+  // clear old target key highlight (letters + spacebar)
+  document.querySelectorAll('.target').forEach(k => k.classList.remove('target'));
+  const k = keyEls[ch];
+  if (k) k.classList.add('target');
+  highlightFinger(ch);
+  // letter prompt color follows finger
+  const info = FINGER[ch];
+  if (stage && stage.type === 'letters') {
+    const lp = el('letterPrompt');
+    lp.textContent = ch;
+    lp.style.color = info ? getComputedStyle(document.documentElement).getPropertyValue('--f-' + info.finger) : '#fff';
+    lp.classList.remove('pop'); void lp.offsetWidth; lp.classList.add('pop');
+  }
+}
+
+function nextLetter() {
+  const pool = stage.pool;
+  let ch;
+  do { ch = pool[Math.floor(Math.random() * pool.length)]; } while (ch === target && pool.length > 1);
+  setTarget(ch);
+}
+
+function nextPhrase() {
+  const list = stage.type === 'sentence' ? stage.sentences : stage.words;
+  let w;
+  do { w = list[Math.floor(Math.random() * list.length)]; } while (w === word && list.length > 1);
+  word = w;
+  wordIdx = 0;
+  renderPhrase();
+  setTarget(word[0]);
+}
+
+function renderPhrase() {
+  if (stage.type === 'sentence') renderSentence();
+  else renderWord();
+}
+
+function tile(ch, i) {
+  const t = document.createElement('div');
+  t.className = 'wl';
+  if (ch === ' ') { t.classList.add('wl-space'); t.textContent = '·'; }
+  else t.textContent = ch;
+  if (i < wordIdx) t.classList.add('collected');
+  else if (i === wordIdx) t.classList.add('next');
+  return t;
+}
+
+function renderWord() {
+  const wp = el('wordPrompt');
+  wp.innerHTML = '';
+  for (let i = 0; i < word.length; i++) wp.appendChild(tile(word[i], i));
+}
+
+// Sentence mode: keep each word's letters together, spaces as their own tiles
+function renderSentence() {
+  const wp = el('wordPrompt');
+  wp.innerHTML = '';
+  let group = null;
+  for (let i = 0; i < word.length; i++) {
+    if (word[i] === ' ') {
+      wp.appendChild(tile(' ', i));
+      group = null;
+    } else {
+      if (!group) { group = document.createElement('div'); group.className = 'wl-word'; wp.appendChild(group); }
+      group.appendChild(tile(word[i], i));
+    }
+  }
+}
+
+// ─── Start / stop ────────────────────────────────────────────
+function startStage(s) {
+  stage = s;
+  score = 0; el('score').textContent = '0';
+  letterStreak = 0;
+  playing = true;
+  el('introOverlay').classList.remove('show');
+  el('resultsOverlay').classList.remove('show');
+
+  // remember furthest stage reached
+  const idx = STAGES.indexOf(s);
+  const best = parseInt(localStorage.getItem('rainbow-keys-level') || '0', 10);
+  if (idx > best) localStorage.setItem('rainbow-keys-level', idx);
+
+  if (s.type === 'letters') {
+    el('letterPrompt').style.display = 'block';
+    el('wordPrompt').style.display = 'none';
+    nextLetter();
+  } else {
+    el('letterPrompt').style.display = 'none';
+    el('wordPrompt').style.display = 'flex';
+    el('wordPrompt').classList.toggle('sentence', s.type === 'sentence');
+    nextPhrase();
+  }
+
+  if (timed) startTimer();
+  else stopTimer();
+}
+
+function startTimer() {
+  roundCount = 0;
+  timeLeft = 60;
+  el('timer-display').style.display = '';
+  el('timer').textContent = timeLeft;
+  el('timer-display').classList.remove('low');
+  clearInterval(timerId);
+  timerId = setInterval(() => {
+    timeLeft--;
+    el('timer').textContent = timeLeft;
+    if (timeLeft <= 10) el('timer-display').classList.add('low');
+    if (timeLeft <= 0) endTimedRound();
+  }, 1000);
+}
+function stopTimer() {
+  clearInterval(timerId);
+  timerId = null;
+  el('timer-display').style.display = 'none';
+}
+function endTimedRound() {
+  stopTimer();
+  playing = false;
+  document.querySelectorAll('.target').forEach(k => k.classList.remove('target'));
+  document.querySelectorAll('.finger.active').forEach(f => f.classList.remove('active'));
+  el('resultsCount').textContent = roundCount + (roundCount === 1 ? ' letter!' : ' letters!');
+  el('resultsOverlay').classList.add('show');
+  Hallie.addSession(1);
+  Hallie.confetti();
+}
+
+// ─── Feedback ────────────────────────────────────────────────
+function flashKey(ch, cls) {
+  const k = keyEls[ch];
+  if (!k) return;
+  k.classList.add(cls);
+  setTimeout(() => k.classList.remove(cls), 260);
+}
+
+function correct() {
+  flashKey(target, 'correct');
+  score++;
+  el('score').textContent = score;
+  if (timed) roundCount++;
+
+  if (stage.type === 'letters') {
+    letterStreak++;
+    if (letterStreak % 10 === 0) {
+      Hallie.addSession(1);
+      Hallie.confetti();
+      Hallie.flashMessage('Awesome! 🎉');
+    }
+    nextLetter();
+  } else {
+    // mark tile, advance
+    wordIdx++;
+    if (wordIdx >= word.length) {
+      renderPhrase();
+      Hallie.addSession(1);
+      Hallie.confetti();
+      Hallie.flashMessage(stage.type === 'sentence' ? 'You read it! 📖✨' : 'You did it! 🌈');
+      setTimeout(() => { if (playing) nextPhrase(); }, 800);
+      // clear guidance briefly while celebrating
+      document.querySelectorAll('.target').forEach(k => k.classList.remove('target'));
+      target = null;
+    } else {
+      renderPhrase();
+      setTarget(word[wordIdx]);
+    }
+  }
+}
+
+function wrong(ch) {
+  flashKey(ch, 'wrong');
+  const k = keyEls[target];
+  if (k) { k.classList.remove('wiggle'); void k.offsetWidth; k.classList.add('wiggle'); }
+  const lp = el('letterPrompt');
+  if (stage && stage.type === 'letters') { lp.classList.remove('wiggle'); void lp.offsetWidth; lp.classList.add('wiggle'); }
+}
+
+// ─── Keyboard input ──────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // overlays: space/enter dismisses to start
+  const introOpen = el('introOverlay').classList.contains('show');
+  const resultsOpen = el('resultsOverlay').classList.contains('show');
+  if (introOpen || resultsOpen) {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      const best = parseInt(localStorage.getItem('rainbow-keys-level') || '0', 10);
+      startStage(STAGES[Math.min(best, STAGES.length - 1)]);
+    }
+    return;
+  }
+  if (e.key === ' ') e.preventDefault();  // don't scroll
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const ch = e.key === ' ' ? ' ' : e.key.toLowerCase();
+  if (ch !== ' ' && !/^[a-z]$/.test(ch)) return;
+  if (!playing || target === null) return;
+  if (ch === target) correct();
+  else wrong(ch);
+});
+
+// ─── Menu button ─────────────────────────────────────────────
+el('menuBtn').addEventListener('click', () => {
+  playing = false;
+  stopTimer();
+  el('resultsOverlay').classList.remove('show');
+  el('introOverlay').classList.add('show');
+});
+el('resultsAgain').addEventListener('click', () => {
+  el('resultsOverlay').classList.remove('show');
+  el('introOverlay').classList.add('show');
+});
+
+// ─── Init ────────────────────────────────────────────────────
+Hallie.initSecretTap(el('token-display'));
+el('introOverlay').classList.add('show');
+</script>
+</body>
+</html>
