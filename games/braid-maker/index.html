@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Braid Maker — Hallie's Games</title>
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  body { overflow: hidden; height: 100vh; }
+
+  #game-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    touch-action: none;
+    z-index: 1;
+  }
+
+  /* ── Pick / color / gallery cards ── */
+  #pick-overlay .ov-card, #color-panel .ov-card { max-width: 460px; }
+  #gallery-overlay .ov-card { max-width: 560px; }
+
+  .pick-heading {
+    font-size: clamp(1.05rem, 4vw, 1.35rem);
+    color: #fff;
+    margin: 4px 0 14px;
+  }
+
+  .strand-row {
+    display: flex;
+    justify-content: center;
+    gap: clamp(14px, 5vw, 26px);
+    margin-bottom: 20px;
+  }
+  .strand-pick {
+    width: clamp(52px, 15vw, 72px);
+    height: clamp(52px, 15vw, 72px);
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.25);
+    cursor: pointer;
+    transition: transform .12s, border-color .12s, box-shadow .12s;
+  }
+  .strand-pick.selected {
+    border-color: var(--gold);
+    transform: scale(1.12);
+    box-shadow: 0 0 18px rgba(255,215,0,0.7);
+  }
+
+  .palette {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(8px, 2.5vw, 12px);
+    margin-bottom: 22px;
+  }
+  .swatch {
+    width: clamp(34px, 9vw, 46px);
+    height: clamp(34px, 9vw, 46px);
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.35);
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  .swatch:active { transform: scale(0.88); }
+  .swatch-more {
+    background: conic-gradient(from 0deg, #ff4d6d, #ff9f1a, #ffd32a, #4cd137, #26d0ce, #4b7bec, #c56cf0, #ff4d6d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.3rem;
+    font-weight: bold;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+  }
+
+  /* ── Buttons ── */
+  .h-btn-alt {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.3);
+    font-size: clamp(0.95rem, 3.2vw, 1.15rem);
+  }
+  .h-btn-alt:hover { background: rgba(255,255,255,0.22); }
+
+  /* ── Bottom bars ── */
+  #done-bar, #result-bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 20;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+  #done-bar.show { display: flex; }
+  #result-bar { flex-direction: column; }
+  #result-bar.show { display: flex; }
+  #done-btn, #newbraid-btn, #colors-btn, #result-gallery-btn { pointer-events: auto; }
+  #done-btn, #newbraid-btn {
+    padding: 14px 40px;
+    font-size: clamp(1.1rem, 4.5vw, 1.35rem);
+  }
+  #colors-btn {
+    padding: 12px 16px;
+    font-size: 1.5rem;
+    border-radius: 16px;
+  }
+  #result-bar {
+    background: linear-gradient(to top, rgba(10,6,26,0.94), rgba(10,6,26,0));
+  }
+  .rb-btns { display: flex; gap: 12px; }
+  .result-text {
+    font-size: clamp(1.2rem, 5vw, 1.7rem);
+    color: var(--gold);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+  }
+  .result-text strong { font-size: 1.35em; }
+
+  #recenter-btn {
+    position: fixed;
+    left: 50%; top: 108px;
+    transform: translateX(-50%);
+    z-index: 18;
+    display: none;
+    pointer-events: auto;
+    padding: 10px 22px;
+    border-radius: 22px;
+    border: 2px solid var(--gold);
+    background: rgba(0,0,0,0.6);
+    color: var(--gold);
+    font-family: var(--font);
+    font-size: clamp(0.9rem, 3.2vw, 1.1rem);
+    cursor: pointer;
+  }
+  #recenter-btn.show { display: block; }
+
+  #hint-tip {
+    position: fixed;
+    left: 50%; top: 64px;
+    transform: translateX(-50%);
+    z-index: 15;
+    background: rgba(0,0,0,0.45);
+    border-radius: 16px;
+    padding: 6px 16px;
+    font-size: clamp(0.85rem, 3vw, 1.05rem);
+    color: rgba(255,255,255,0.85);
+    pointer-events: none;
+    display: none;
+    white-space: nowrap;
+  }
+  #hint-tip.show { display: block; }
+
+  /* ── Gallery ── */
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 12px;
+    max-height: 56vh;
+    overflow-y: auto;
+    padding: 4px;
+    margin-bottom: 18px;
+  }
+  .gcell {
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 6px;
+    text-align: center;
+  }
+  .gcell img { width: 100%; border-radius: 8px; display: block; }
+  .gcell span { font-size: 0.85rem; color: var(--gold); }
+</style>
+</head>
+<body>
+
+<canvas id="game-canvas"></canvas>
+
+<!-- TOP BAR -->
+<div class="topbar topbar-dark">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    🎀 Braids: <span id="score">0</span>
+  </div>
+  <a href="../../" class="back-btn">← Games</a>
+</div>
+
+<div id="hint-tip">Tap a side to braid! ✨</div>
+<button id="recenter-btn">↩ Keep braiding</button>
+
+<!-- DONE BAR (while braiding) -->
+<div id="done-bar">
+  <button class="h-btn h-btn-alt" id="colors-btn" aria-label="Change colors">🎨</button>
+  <button class="h-btn h-btn-green" id="done-btn">Done 🎀</button>
+</div>
+
+<!-- RESULT BAR (after Done) -->
+<div id="result-bar">
+  <div class="result-text">Your braid: <strong id="twist-count">0</strong> twists 🎀</div>
+  <div class="rb-btns">
+    <button class="h-btn h-btn-green" id="newbraid-btn">New Braid 🎀</button>
+    <button class="h-btn h-btn-alt" id="result-gallery-btn">🖼️ Gallery</button>
+  </div>
+</div>
+
+<!-- PICK SCREEN -->
+<div class="overlay show" id="pick-overlay">
+  <div class="ov-card">
+    <div class="ov-title">Make a Braid! 🎀</div>
+    <div class="pick-heading">Pick a color for each strand:</div>
+    <div class="strand-row" id="pick-strands">
+      <div class="strand-pick" data-i="0"></div>
+      <div class="strand-pick" data-i="1"></div>
+      <div class="strand-pick" data-i="2"></div>
+    </div>
+    <div class="palette" id="pick-palette"></div>
+    <button class="h-btn h-btn-green" id="start-btn">Start Braiding! 🎀</button>
+    <button class="h-btn h-btn-alt" id="pick-gallery-btn" style="margin-top:10px">🖼️ My Braids</button>
+  </div>
+</div>
+
+<!-- CHANGE-COLOR PANEL (mid-braid) -->
+<div class="overlay" id="color-panel">
+  <div class="ov-card">
+    <div class="ov-title">Change a Color 🎨</div>
+    <div class="pick-heading">Tap a strand, then a color:</div>
+    <div class="strand-row" id="cp-strands">
+      <div class="strand-pick" data-lane="0"></div>
+      <div class="strand-pick" data-lane="1"></div>
+      <div class="strand-pick" data-lane="2"></div>
+    </div>
+    <div class="palette" id="cp-palette"></div>
+    <button class="h-btn h-btn-green" id="cp-done">Keep Braiding! 🎀</button>
+  </div>
+</div>
+
+<!-- GALLERY -->
+<div class="overlay" id="gallery-overlay">
+  <div class="ov-card">
+    <div class="ov-title">My Braids 🖼️</div>
+    <div class="gallery-grid" id="gallery-grid"></div>
+    <div class="pick-heading" id="gallery-empty" style="display:none">No braids yet — go make one! 🎀</div>
+    <button class="h-btn h-btn-green" id="gallery-close">Close</button>
+  </div>
+</div>
+
+<!-- SECRET MODAL -->
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<!-- Hidden native color picker (opened by the "＋ More colors" swatch) -->
+<input type="color" id="color-input" style="position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0">
+
+<!-- FLASH + CONFETTI -->
+<div class="flash-msg" id="flash-msg"></div>
+<div id="confetti-layer"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ─── Palette ─────────────────────────────────
+const COLORS = [
+  '#ff7eb9', '#ff4d6d', '#c56cf0', '#7d5fff', '#4b7bec', '#26d0ce',
+  '#4cd137', '#ffd32a', '#ff9f1a', '#a06a42', '#f5f5f5', '#2f3542',
+];
+
+// Current colors of the three strands (mutable — can change mid-braid)
+let strandColors = ['#ff7eb9', '#ffd32a', '#26d0ce'];
+let selectedStrand = 0;
+
+// ─── Canvas ──────────────────────────────────
+const canvas = document.getElementById('game-canvas');
+const ctx    = canvas.getContext('2d');
+const dpr    = window.devicePixelRatio || 1;
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  recomputeLayout();
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Layout (world units) ────────────────────
+let cx = 0, LANE_DX = 0, SEG_H = 0, STRAND_W = 0;
+const ANCHOR_Y = 78;
+
+function recomputeLayout() {
+  cx       = W / 2;
+  LANE_DX  = Math.min(96, W * 0.17);
+  SEG_H    = LANE_DX * 1.12;
+  STRAND_W = LANE_DX * 0.78;
+}
+function laneX(i) { return cx + (i - 1) * LANE_DX; }
+
+// ─── Game state ──────────────────────────────
+let gameState = 'PICK';       // 'PICK' | 'BRAIDING' | 'RESULT'
+let score = 0;
+
+// rows[k] = lane order (strand indices) at boundary k; row 0 = anchor.
+let rows = [];
+// bandColor[k] = strand-color snapshot used for band k (enables mid-braid recolor)
+let bandColor = [];
+let lastSide = 'R';
+let animT = 1;
+
+// ─── View (follow while braiding, pinch to inspect) ──
+let view = { scale: 1, x: 0, y: 0 };
+let manual = false;           // true while the user is pinch-controlling the view
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+
+function crossings() { return rows.length - 1; }
+function looseLen() { return gameState === 'RESULT' ? SEG_H * 1.1 : SEG_H * 1.9; }
+
+function workWorldY() {
+  const c = crossings();
+  if (c <= 0) return ANCHOR_Y;
+  return ANCHOR_Y + (c - 1 + easeOut(animT)) * SEG_H;
+}
+
+// Fixed-scale view that follows the working point (used while braiding).
+function followTarget() {
+  const topY = 92 - ANCHOR_Y;              // keep the clip just below the top bar
+  const y = Math.min(topY, H * 0.62 - workWorldY());
+  return { scale: 1, x: 0, y };
+}
+
+// Fit the whole braid on screen (used on the results screen).
+function computeFit() {
+  const topWorld    = ANCHOR_Y - 34;
+  const bottomWorld = workWorldY() + looseLen();
+  const worldH      = Math.max(1, bottomWorld - topWorld);
+  const availH      = Math.max(90, H - 58 - 180);
+  const scale       = Math.min(1.0, availH / worldH);
+  return { scale, x: cx * (1 - scale), y: 58 - topWorld * scale };
+}
+
+function setManual(v) {
+  manual = v;
+  document.getElementById('recenter-btn').classList.toggle('show', v && gameState === 'BRAIDING');
+}
+
+function startBraid() {
+  rows = [[0, 1, 2]];
+  bandColor = [];
+  lastSide = 'R';
+  animT = 1;
+  setManual(false);
+  gameState = 'BRAIDING';
+  view = followTarget();
+  document.getElementById('done-bar').classList.add('show');
+  document.getElementById('result-bar').classList.remove('show');
+  document.getElementById('hint-tip').classList.add('show');
+}
+
+function nextHintSide() { return lastSide === 'L' ? 'R' : 'L'; }
+
+function cross(side) {
+  if (gameState !== 'BRAIDING') return;
+  if (animT < 1) animT = 1;
+
+  const prev = rows[rows.length - 1].slice();
+  const next = side === 'L' ? [prev[1], prev[0], prev[2]]   // left over middle
+                            : [prev[0], prev[2], prev[1]];   // right over middle
+  rows.push(next);
+  bandColor.push(strandColors.slice());   // this segment keeps today's colors
+  lastSide = side;
+  animT = 0;
+  setManual(false);                       // snap back to the braiding view
+}
+
+// ─── Color helpers ───────────────────────────
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (amt >= 0) { r += (255 - r) * amt; g += (255 - g) * amt; b += (255 - b) * amt; }
+  else          { r *= (1 + amt);       g *= (1 + amt);       b *= (1 + amt); }
+  return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+}
+
+const FILAMENTS = 7;
+function hairStroke(g, color, buildPath) {
+  g.lineCap = 'round';
+  for (let i = 0; i < FILAMENTS; i++) {
+    const t   = i / (FILAMENTS - 1) - 0.5;
+    const off = t * STRAND_W * 0.9;
+    const amt = 0.16 - 0.62 * Math.abs(t);
+    g.beginPath();
+    buildPath(off);
+    g.lineWidth   = STRAND_W * 0.3;
+    g.strokeStyle = shade(color, amt);
+    g.stroke();
+  }
+}
+
+// ─── Drawing (world coords; caller sets the view transform) ──
+function bg() {
+  const gr = ctx.createLinearGradient(0, 0, 0, H);
+  gr.addColorStop(0, '#241040');
+  gr.addColorStop(1, '#0d1b2a');
+  ctx.fillStyle = gr;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawStrandSeg(g, xTop, yTop, xBot, yBot, color) {
+  const cp = SEG_H * 0.42;
+  hairStroke(g, color, off => {
+    g.moveTo(xTop + off, yTop);
+    g.bezierCurveTo(xTop + off, yTop + cp, xBot + off, yBot - cp, xBot + off, yBot);
+  });
+}
+
+function sideForBand(k) { return (rows[k][0] !== rows[k + 1][0]) ? 'L' : 'R'; }
+
+function drawBand(g, k, yTop, yBot) {
+  const topOrder = rows[k], botOrder = rows[k + 1], side = sideForBand(k);
+  const cols = bandColor[k] || strandColors;
+  const topLane = [0, 0, 0], botLane = [0, 0, 0];
+  for (let p = 0; p < 3; p++) { topLane[topOrder[p]] = p; botLane[botOrder[p]] = p; }
+  const overStrand = side === 'L' ? topOrder[0] : topOrder[2];
+  const order = [0, 1, 2].filter(s => s !== overStrand).concat(overStrand);
+  for (const s of order) {
+    drawStrandSeg(g, laneX(topLane[s]), yTop, laneX(botLane[s]), yBot, cols[s]);
+  }
+}
+
+function drawLooseStrands(g, order, startY) {
+  const len = looseLen();
+  for (let p = 0; p < 3; p++) {
+    const s = order[p];
+    const xTop = laneX(p);
+    const xBot = xTop + (p - 1) * LANE_DX * 0.3;
+    hairStroke(g, strandColors[s], off => {
+      g.moveTo(xTop + off, startY);
+      g.quadraticCurveTo(xTop + off, startY + len * 0.5, xBot + off, startY + len);
+    });
+  }
+}
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function drawAnchor(g) {
+  g.save();
+  g.fillStyle = '#e8e8ef';
+  g.strokeStyle = 'rgba(0,0,0,0.3)';
+  g.lineWidth = 3;
+  const w = LANE_DX * 2 + STRAND_W, h = 26, r = 12;
+  roundRect(g, cx - w / 2, ANCHOR_Y - h, w, h, r);
+  g.fill();
+  g.stroke();
+  g.fillStyle = '#ff7eb9';
+  g.fillRect(cx - 3, ANCHOR_Y - h - 8, 6, 10);
+  g.restore();
+}
+
+function drawHintGlow(g, startY) {
+  const p = nextHintSide() === 'L' ? 0 : 2;
+  const x = laneX(p);
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+  g.save();
+  g.beginPath();
+  g.arc(x, startY + SEG_H * 0.9, STRAND_W * (0.8 + pulse * 0.3), 0, Math.PI * 2);
+  g.fillStyle = 'rgba(255,215,0,' + (0.16 + pulse * 0.2) + ')';
+  g.fill();
+  g.restore();
+}
+
+function drawBow(g, x, y) {
+  g.save();
+  g.font = (STRAND_W * 2.1) + 'px serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('🎀', x, y);
+  g.restore();
+}
+
+function renderBraid(g, opts) {
+  g.save();
+  g.translate(view.x, view.y);
+  g.scale(view.scale, view.scale);
+  const n = crossings();
+  for (let k = 0; k < n; k++) {
+    const last = (k === n - 1);
+    const yTop = ANCHOR_Y + k * SEG_H;
+    const yBot = yTop + SEG_H * (last ? easeOut(animT) : 1);
+    drawBand(g, k, yTop, yBot);
+  }
+  const workY = workWorldY();
+  drawLooseStrands(g, rows[rows.length - 1], workY);
+  if (opts.hint) drawHintGlow(g, workY);
+  if (opts.bow)  drawBow(g, cx, workY + SEG_H * 0.15);
+  drawAnchor(g);
+  g.restore();
+}
+
+function drawFrame() {
+  bg();
+  if (gameState === 'PICK') return;
+  renderBraid(ctx, { hint: gameState === 'BRAIDING', bow: gameState === 'RESULT' });
+}
+
+// ─── Loop ────────────────────────────────────
+let lastTs = 0;
+function loop(ts) {
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  if (gameState !== 'PICK') {
+    if (animT < 1) animT = Math.min(1, animT + dt / 0.22);
+    if (!manual) {
+      const t = gameState === 'RESULT' ? computeFit() : followTarget();
+      const k = Math.min(1, dt * 7);
+      view.scale += (t.scale - view.scale) * k;
+      view.x     += (t.x     - view.x)     * k;
+      view.y     += (t.y     - view.y)     * k;
+    }
+  }
+  drawFrame();
+  requestAnimationFrame(loop);
+}
+
+// ─── Input: 1 finger = braid tap, 2 fingers = pinch zoom/pan ──
+const pts = new Map();
+let tap = null, pinch = null;
+
+function centroid() { let sx = 0, sy = 0; for (const p of pts.values()) { sx += p.x; sy += p.y; } return { x: sx / pts.size, y: sy / pts.size }; }
+function spread()   { const a = [...pts.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
+
+function startPinch() {
+  pinch = { d0: spread(), m: centroid(), base: { ...view } };
+  setManual(true);
+  tap = null;
+}
+function updatePinch() {
+  const m = centroid(), d = spread();
+  const s  = clamp(pinch.base.scale * (d / (pinch.d0 || 1)), 0.05, 3);
+  const fx = (pinch.m.x - pinch.base.x) / pinch.base.scale;
+  const fy = (pinch.m.y - pinch.base.y) / pinch.base.scale;
+  view = { scale: s, x: m.x - fx * s, y: m.y - fy * s };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  if (e.target !== canvas) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 1) tap = { x0: e.clientX, y0: e.clientY, moved: false };
+  else if (pts.size === 2) startPinch();
+}, { passive: true });
+
+canvas.addEventListener('pointermove', e => {
+  if (!pts.has(e.pointerId)) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size >= 2 && pinch) updatePinch();
+  else if (pts.size === 1 && tap && Math.hypot(e.clientX - tap.x0, e.clientY - tap.y0) > 15) tap.moved = true;
+}, { passive: true });
+
+function endPointer(e) {
+  const had = pts.size;
+  pts.delete(e.pointerId);
+  if (had >= 2) { pinch = null; tap = null; }
+  else if (had === 1) {
+    if (tap && !tap.moved && gameState === 'BRAIDING') cross(tap.x0 < cx ? 'L' : 'R');
+    tap = null;
+  }
+}
+canvas.addEventListener('pointerup', endPointer, { passive: true });
+canvas.addEventListener('pointercancel', endPointer, { passive: true });
+
+document.getElementById('recenter-btn').addEventListener('click', () => setManual(false));
+
+document.addEventListener('keydown', e => {
+  if (gameState !== 'BRAIDING') return;
+  if (document.querySelector('.overlay.show')) return;
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); cross('L'); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); cross('R'); }
+});
+
+// ─── Gallery (persisted) ─────────────────────
+const GKEY = 'braid-maker-gallery', GMAX = 16;
+function loadGallery() { try { return JSON.parse(localStorage.getItem(GKEY) || '[]'); } catch (e) { return []; } }
+function saveGallery(a) { localStorage.setItem(GKEY, JSON.stringify(a)); }
+
+// Render the current finished braid to a small transparent thumbnail dataURL.
+function makeThumb() {
+  const BW = 120, BH = 210, S = 2;
+  const off = document.createElement('canvas');
+  off.width = BW * S; off.height = BH * S;
+  const g = off.getContext('2d'); g.scale(S, S);
+
+  const sv = { cx, LANE_DX, SEG_H, STRAND_W, view };
+  LANE_DX = BW * 0.2; SEG_H = LANE_DX * 1.12; STRAND_W = LANE_DX * 0.78; cx = BW / 2;
+  const topWorld = ANCHOR_Y - 34, bottomWorld = workWorldY() + SEG_H * 1.1;
+  const worldH = Math.max(1, bottomWorld - topWorld);
+  const braidW = 2 * LANE_DX + STRAND_W;
+  const scale  = Math.min((BH - 14) / worldH, (BW * 0.86) / braidW);
+  view = { scale, x: BW / 2 - cx * scale, y: (BH - worldH * scale) / 2 - topWorld * scale };
+
+  renderBraid(g, { hint: false, bow: true });
+
+  cx = sv.cx; LANE_DX = sv.LANE_DX; SEG_H = sv.SEG_H; STRAND_W = sv.STRAND_W; view = sv.view;
+  return off.toDataURL('image/png');
+}
+
+function addToGallery() {
+  const arr = loadGallery();
+  arr.unshift({ thumb: makeThumb(), twists: crossings(), ts: Date.now() });
+  while (arr.length > GMAX) arr.pop();
+  try { saveGallery(arr); }
+  catch (e) { while (arr.length > 3) { arr.pop(); try { saveGallery(arr); break; } catch (_) {} } }
+}
+
+function openGallery() {
+  const grid = document.getElementById('gallery-grid');
+  const arr = loadGallery();
+  grid.innerHTML = '';
+  document.getElementById('gallery-empty').style.display = arr.length ? 'none' : 'block';
+  arr.forEach(b => {
+    const cell = document.createElement('div');
+    cell.className = 'gcell';
+    const img = document.createElement('img');
+    img.src = b.thumb;
+    const cap = document.createElement('span');
+    cap.textContent = b.twists + ' 🎀';
+    cell.appendChild(img); cell.appendChild(cap);
+    grid.appendChild(cell);
+  });
+  document.getElementById('gallery-overlay').classList.add('show');
+}
+
+// ─── Done → count up, show braid, save to gallery ──
+function countUp(el, to) {
+  const dur = Math.min(1300, 250 + to * 70), t0 = performance.now();
+  (function step(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    el.textContent = Math.round(p * to);
+    if (p < 1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+document.getElementById('done-btn').addEventListener('click', () => {
+  if (gameState !== 'BRAIDING') return;
+  const n = crossings();
+  if (n < 1) { Hallie.flashMessage('Braid a little first! 🎀', 1000); return; }
+
+  addToGallery();
+
+  gameState = 'RESULT';
+  setManual(false);
+  animT = 1;
+
+  score += 1;
+  document.getElementById('score').textContent = score;
+
+  const earned = 1 + (n >= 10 ? 1 : 0);
+  Hallie.addSession(earned);
+  Hallie.confetti();
+  Hallie.flashMessage(n >= 10 ? 'Beautiful braid! 🎀✨' : 'Pretty braid! 🎀', 1300);
+
+  document.getElementById('done-bar').classList.remove('show');
+  document.getElementById('hint-tip').classList.remove('show');
+  document.getElementById('result-bar').classList.add('show');
+  countUp(document.getElementById('twist-count'), n);
+});
+
+document.getElementById('newbraid-btn').addEventListener('click', () => {
+  document.getElementById('result-bar').classList.remove('show');
+  gameState = 'PICK';
+  selectedStrand = 0; renderPickStrands();   // reflect the latest colors
+  document.getElementById('pick-overlay').classList.add('show');
+});
+
+document.getElementById('result-gallery-btn').addEventListener('click', openGallery);
+document.getElementById('pick-gallery-btn').addEventListener('click', openGallery);
+document.getElementById('gallery-close').addEventListener('click', () =>
+  document.getElementById('gallery-overlay').classList.remove('show'));
+
+// ─── Palettes (pick screen + mid-braid panel) ──
+const colorInput = document.getElementById('color-input');
+colorInput.addEventListener('change', function () { if (this._pick) this._pick(this.value); });
+
+function buildPalette(elId, onPick, getCurrent) {
+  const pal = document.getElementById(elId);
+  COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch';
+    sw.style.background = c;
+    sw.addEventListener('click', () => onPick(c));
+    pal.appendChild(sw);
+  });
+  const more = document.createElement('div');
+  more.className = 'swatch swatch-more';
+  more.title = 'More colors';
+  more.textContent = '＋';
+  more.addEventListener('click', () => {
+    colorInput.value = (getCurrent && getCurrent()) || '#ff7eb9';
+    colorInput._pick = onPick;
+    colorInput.click();
+  });
+  pal.appendChild(more);
+}
+
+// Pick screen: strand circles map to strand indices 0/1/2
+function renderPickStrands() {
+  document.querySelectorAll('#pick-strands .strand-pick').forEach(el => {
+    const i = +el.dataset.i;
+    el.style.background = strandColors[i];
+    el.classList.toggle('selected', i === selectedStrand);
+  });
+}
+document.querySelectorAll('#pick-strands .strand-pick').forEach(el => {
+  el.addEventListener('click', () => { selectedStrand = +el.dataset.i; renderPickStrands(); });
+});
+buildPalette('pick-palette', c => {
+  strandColors[selectedStrand] = c;
+  selectedStrand = (selectedStrand + 1) % 3;
+  renderPickStrands();
+}, () => strandColors[selectedStrand]);
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('pick-overlay').classList.remove('show');
+  selectedStrand = 0; renderPickStrands();
+  startBraid();
+});
+
+// Mid-braid panel: circles map to whatever strand is currently at each lane
+let cpMap = [0, 1, 2], cpSel = 0;
+function renderCpStrands() {
+  document.querySelectorAll('#cp-strands .strand-pick').forEach(el => {
+    const lane = +el.dataset.lane;
+    el.style.background = strandColors[cpMap[lane]];
+    el.classList.toggle('selected', lane === cpSel);
+  });
+}
+document.querySelectorAll('#cp-strands .strand-pick').forEach(el => {
+  el.addEventListener('click', () => { cpSel = +el.dataset.lane; renderCpStrands(); });
+});
+buildPalette('cp-palette', c => {
+  strandColors[cpMap[cpSel]] = c;   // recolor this strand from here on
+  cpSel = (cpSel + 1) % 3;
+  renderCpStrands();
+}, () => strandColors[cpMap[cpSel]]);
+document.getElementById('colors-btn').addEventListener('click', () => {
+  cpMap = rows[rows.length - 1].slice();
+  cpSel = 0; renderCpStrands();
+  document.getElementById('color-panel').classList.add('show');
+});
+document.getElementById('cp-done').addEventListener('click', () =>
+  document.getElementById('color-panel').classList.remove('show'));
+
+// ─── Init ────────────────────────────────────
+renderPickStrands();
+resizeCanvas();
+Hallie.initSecretTap(document.getElementById('token-display'));
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
