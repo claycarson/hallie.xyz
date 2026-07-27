@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Find the Monster — Hallie's Games</title>
+<title>Find the Critter — Hallie's Games</title>
 <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../shared/style.css">
 <style>
@@ -17,7 +17,7 @@
   }
 
   /* Restore pointer on interactive topbar elements */
-  .token-display, .back-btn { cursor: pointer; }
+  .token-display, .back-btn, #level-pill { cursor: pointer; }
 
   /* ── Flashlight cursor emoji ── */
   #flashlight-cursor {
@@ -42,10 +42,10 @@
     background: #06090e;   /* solid dark before first move */
   }
 
-  /* ── Monster ── */
-  #monster {
+  /* ── Critter ── */
+  #critter {
     position: fixed;
-    font-size: clamp(60px, 12vmin, 100px);
+    font-size: 70px;       /* set by JS per difficulty */
     line-height: 1;
     transform: translate(-50%, -50%);
     z-index: 1;
@@ -54,21 +54,21 @@
     will-change: transform;
   }
 
-  #monster.wiggling {
-    animation: monster-wiggle 0.4s ease-in-out infinite alternate;
+  #critter.wiggling {
+    animation: critter-wiggle 0.4s ease-in-out infinite alternate;
   }
 
-  #monster.caught {
-    animation: monster-caught 0.5s ease forwards;
+  #critter.caught {
+    animation: critter-caught 0.5s ease forwards;
     pointer-events: none;
   }
 
-  @keyframes monster-wiggle {
+  @keyframes critter-wiggle {
     from { transform: translate(-50%, -50%) rotate(-12deg) scale(1.05); }
     to   { transform: translate(-50%, -50%) rotate(12deg)  scale(1.1); }
   }
 
-  @keyframes monster-caught {
+  @keyframes critter-caught {
     0%   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
     40%  { transform: translate(-50%, -80%) scale(1.5) rotate(20deg); opacity: 1; }
     100% { transform: translate(-50%, -120%) scale(0) rotate(45deg); opacity: 0; }
@@ -91,8 +91,40 @@
   }
   #search-hint.hidden { opacity: 0; }
 
-  /* ── Score display: "Found: N" ── */
+  /* ── Score + level pills ── */
   #found-count { font-variant-numeric: tabular-nums; }
+  #level-pill { user-select: none; }
+
+  /* ── Difficulty picker ── */
+  .diff-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .diff-btn {
+    border: none;
+    border-radius: 16px;
+    padding: 16px 22px;
+    font-family: var(--font);
+    font-weight: bold;
+    cursor: pointer;
+    font-size: clamp(1.15rem, 4.5vw, 1.55rem);
+    line-height: 1.25;
+    transition: transform .1s, box-shadow .1s;
+  }
+  .diff-btn:hover  { transform: translateY(-2px); }
+  .diff-btn:active { transform: translateY(0); }
+  .diff-btn .diff-sub {
+    display: block;
+    font-size: 0.62em;
+    font-weight: normal;
+    opacity: 0.9;
+    margin-top: 3px;
+  }
+  .diff-easy { background: linear-gradient(135deg, #4cff8c, #00b84a); color: #0d1b2a; box-shadow: 0 4px 20px rgba(76,255,140,0.35); }
+  .diff-med  { background: linear-gradient(135deg, #64c8ff, #2a7fd0); color: #0d1b2a; box-shadow: 0 4px 20px rgba(100,200,255,0.35); }
+  .diff-hard { background: linear-gradient(135deg, #ff6b6b, #d63333); color: #fff;    box-shadow: 0 4px 20px rgba(255,107,107,0.35); }
 </style>
 </head>
 <body>
@@ -103,13 +135,14 @@
     🪙 <span id="token-count">0</span> tokens
   </div>
   <div class="score-display">
-    👾 Found: <span id="found-count">0</span>
+    🐾 Found: <span id="found-count">0</span>
   </div>
+  <div class="score-display" id="level-pill">🎚️ <span id="level-label">Easy</span></div>
   <a href="../" class="back-btn">← Games</a>
 </div>
 
-<!-- MONSTER -->
-<div id="monster">👾</div>
+<!-- CRITTER -->
+<div id="critter">🐰</div>
 
 <!-- FLASHLIGHT CURSOR -->
 <div id="flashlight-cursor">🔦</div>
@@ -119,6 +152,27 @@
 
 <!-- FLASH MESSAGE -->
 <div class="flash-msg" id="flash-msg"></div>
+
+<!-- DIFFICULTY PICKER -->
+<div class="overlay show" id="level-overlay">
+  <div class="ov-card">
+    <div class="ov-title">🔦 Pick a Level! 🐾</div>
+    <div class="diff-btns">
+      <button class="diff-btn diff-easy" data-level="easy">
+        Easy 🐘
+        <span class="diff-sub">Big critters &amp; a big flashlight</span>
+      </button>
+      <button class="diff-btn diff-med" data-level="medium">
+        Medium 🐰
+        <span class="diff-sub">Smaller critters &amp; a smaller light</span>
+      </button>
+      <button class="diff-btn diff-hard" data-level="hard">
+        Hard 🐜
+        <span class="diff-sub">Tiny critters &amp; a tiny light!</span>
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- SECRET MODAL -->
 <div class="secret-modal" id="secret-modal">
@@ -142,55 +196,108 @@
 // ─────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────
-const FLASHLIGHT_R  = 130;   // px — radius of transparent circle
-const NEAR_DIST     = FLASHLIGHT_R + 140; // eyes appear, monster wiggles
-const LIT_DIST      = FLASHLIGHT_R - 15;  // monster catchable
-const TOPBAR_H      = 64;    // px — safe zone below topbar
-const EDGE_PAD      = 80;    // px — padding from screen edges
+const TOPBAR_H = 64;   // px — safe zone below topbar
 
-const MONSTERS = ['👹','👾','👻','🐙','🦑','🎃','🐲','🤡','🐸','🦎'];
+// Each level scales the flashlight beam AND the critter size together.
+//   flashR    — radius of the lit circle (px)
+//   critterPx — critter emoji font-size (px)
+const LEVELS = {
+  easy:   { label: 'Easy',   flashR: 165, critterPx: 104 },
+  medium: { label: 'Medium', flashR: 118, critterPx: 68  },
+  hard:   { label: 'Hard',   flashR: 78,  critterPx: 42  },
+};
+
+// Lots of different critters — cute animals, bugs, and sea friends!
+const CRITTERS = [
+  '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯',
+  '🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆',
+  '🦉','🦇','🐺','🐗','🐴','🦄','🐝','🦋','🐌','🐞',
+  '🐢','🐍','🦎','🐙','🦑','🦐','🦀','🐠','🐟','🐬',
+  '🐳','🦈','🐊','🦓','🐘','🦒','🦘','🐿️','🦔','🦝',
+  '🦥','🦦','🐕','🐈','🐇','🦜','🦢','🦩','🐣','🐥'
+];
 
 // ─────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────
-let monsterX = 0, monsterY = 0;
+let flashR    = LEVELS.easy.flashR;  // active beam radius
+let nearDist  = 0;                   // critter wiggles inside this
+let litDist   = 0;                   // critter catchable inside this
+let edgePad   = 80;                  // padding from screen edges (scales w/ critter)
+
+let critterX = 0, critterY = 0;
 let cursorX  = -999, cursorY = -999;
 let foundCount = 0;
 let catching = false;
+let playing  = false;   // false while the picker overlay is up
 let hintDismissed = false;
 
 const darkness         = document.getElementById('darkness');
-const monsterEl        = document.getElementById('monster');
-const foundCountEl     = document.getElementById('found-count');
+const critterEl        = document.getElementById('critter');
+const foundCountEl      = document.getElementById('found-count');
+const levelLabelEl     = document.getElementById('level-label');
+const levelPill        = document.getElementById('level-pill');
+const levelOverlay     = document.getElementById('level-overlay');
 const hintEl           = document.getElementById('search-hint');
 const flashlightCursor = document.getElementById('flashlight-cursor');
 
 // ─────────────────────────────────────────────
-// MONSTER PLACEMENT
+// LEVEL SELECTION
 // ─────────────────────────────────────────────
-function spawnMonster() {
-  catching = false;
-  monsterEl.classList.remove('caught', 'wiggling');
+function applyLevel(key) {
+  const cfg = LEVELS[key];
+  flashR   = cfg.flashR;
+  nearDist = flashR + 120;   // wiggle range
+  litDist  = flashR - 10;    // catch range
+  edgePad  = Math.round(cfg.critterPx * 0.7) + 30;
 
-  // Pick a different emoji than the last one
-  const current = monsterEl.textContent;
-  const pool = MONSTERS.filter(m => m !== current);
-  monsterEl.textContent = pool[Math.floor(Math.random() * pool.length)];
+  critterEl.style.fontSize = cfg.critterPx + 'px';
+  levelLabelEl.textContent = cfg.label;
+
+  levelOverlay.classList.remove('show');
+  playing = true;
+
+  // Repaint the beam at its new size if we already have a cursor position
+  if (cursorX > -999) updateLight(cursorX, cursorY);
+
+  spawnCritter();
+}
+
+function openLevelPicker() {
+  playing = false;
+  catching = false;
+  critterEl.classList.remove('wiggling');
+  levelOverlay.classList.add('show');
+}
+
+levelOverlay.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => applyLevel(btn.dataset.level));
+});
+levelPill.addEventListener('click', openLevelPicker);
+
+// ─────────────────────────────────────────────
+// CRITTER PLACEMENT
+// ─────────────────────────────────────────────
+function spawnCritter() {
+  catching = false;
+  critterEl.classList.remove('caught', 'wiggling');
+
+  // Pick a different critter than the last one
+  const current = critterEl.textContent;
+  const pool = CRITTERS.filter(m => m !== current);
+  critterEl.textContent = pool[Math.floor(Math.random() * pool.length)];
 
   // Random safe position
-  const minX = EDGE_PAD;
-  const maxX = window.innerWidth  - EDGE_PAD;
-  const minY = TOPBAR_H + EDGE_PAD;
-  const maxY = window.innerHeight - EDGE_PAD;
+  const minX = edgePad;
+  const maxX = window.innerWidth  - edgePad;
+  const minY = TOPBAR_H + edgePad;
+  const maxY = window.innerHeight - edgePad;
 
-  monsterX = minX + Math.random() * (maxX - minX);
-  monsterY = minY + Math.random() * (maxY - minY);
+  critterX = minX + Math.random() * (maxX - minX);
+  critterY = minY + Math.random() * (maxY - minY);
 
-  monsterEl.style.left = monsterX + 'px';
-  monsterEl.style.top  = monsterY + 'px';
-
-  eyesEl.style.left = monsterX + 'px';
-  eyesEl.style.top  = monsterY + 'px';
+  critterEl.style.left = critterX + 'px';
+  critterEl.style.top  = critterY + 'px';
 }
 
 // ─────────────────────────────────────────────
@@ -207,48 +314,47 @@ function updateLight(x, y) {
   // Two-layer gradient:
   // 1. Warm hot-spot — soft yellow glow at the beam center (mimics real light)
   // 2. Darkness — transparent circle carving visibility, fading to near-black
-  const r = FLASHLIGHT_R;
+  const r = flashR;
   darkness.style.background =
     `radial-gradient(circle ${Math.round(r * 0.42)}px at ${x}px ${y}px,` +
     ` rgba(255,238,150,0.22) 0%, rgba(255,220,100,0.06) 60%, transparent 100%),` +
     `radial-gradient(circle ${r}px at ${x}px ${y}px,` +
     ` transparent 0%, transparent 52%, rgba(0,0,0,0.55) 72%, rgba(0,0,0,0.97) 100%)`;
 
-  if (catching) return;
+  if (!playing || catching) return;
 
-  // Distance from flashlight center to monster center
-  const dx = x - monsterX;
-  const dy = y - monsterY;
+  // Distance from flashlight center to critter center
+  const dx = x - critterX;
+  const dy = y - critterY;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
-  const isNear = dist < NEAR_DIST;
-  monsterEl.classList.toggle('wiggling', isNear);
+  critterEl.classList.toggle('wiggling', dist < nearDist);
 }
 
 // ─────────────────────────────────────────────
 // CATCH
 // ─────────────────────────────────────────────
 function tryClick(x, y) {
-  if (catching) return;
+  if (!playing || catching) return;
 
-  const dx = x - monsterX;
-  const dy = y - monsterY;
+  const dx = x - critterX;
+  const dy = y - critterY;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
-  if (dist > LIT_DIST) return; // in the dark — ignore
+  if (dist > litDist) return; // in the dark — ignore
 
   catching = true;
   foundCount++;
   foundCountEl.textContent = foundCount;
 
-  monsterEl.classList.remove('wiggling');
-  monsterEl.classList.add('caught');
+  critterEl.classList.remove('wiggling');
+  critterEl.classList.add('caught');
 
   Hallie.addSession(1);
   Hallie.confetti();
-  Hallie.flashMessage('Got it! 🎉');
+  Hallie.flashMessage('Found it! 🎉');
 
-  setTimeout(spawnMonster, 1600);
+  setTimeout(spawnCritter, 1600);
 }
 
 // ─────────────────────────────────────────────
@@ -290,10 +396,9 @@ document.addEventListener('touchstart', e => {
 }, { passive: true });
 
 // ─────────────────────────────────────────────
-// INIT
+// INIT — wait for the player to pick a level
 // ─────────────────────────────────────────────
 Hallie.initSecretTap(document.getElementById('token-display'));
-spawnMonster();
 </script>
 </body>
 </html>
