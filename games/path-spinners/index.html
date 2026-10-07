@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Path Spinners — Hallie's Games</title>
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  [hidden] { display: none !important; }
+
+  body.playing { height: 100vh; height: 100dvh; overflow: hidden; padding-bottom: 12px; }
+
+  .screen {
+    width: 100%;
+    max-width: 760px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 16px;
+  }
+
+  button.back-btn { cursor: pointer; }
+
+  /* ── Map ── */
+  #map-title {
+    font-size: clamp(2rem, 8vw, 3.2rem);
+    color: var(--gold);
+    text-shadow: 0 0 24px rgba(255,215,0,0.35);
+    margin: 14px 0 4px;
+    text-align: center;
+    -webkit-touch-callout: none;
+  }
+  .map-sub {
+    color: rgba(255,255,255,0.7);
+    font-size: clamp(1rem, 3.5vw, 1.25rem);
+    margin-bottom: 18px;
+    text-align: center;
+  }
+
+  #surprise-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 22px;
+    margin-bottom: 22px;
+    border-radius: var(--radius-lg);
+    border: 3px solid rgba(255,255,255,0.25);
+    background: linear-gradient(135deg, #ff7eb9, #a29bfe 55%, #64c8ff);
+    color: #fff;
+    font-family: var(--font);
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 8px 28px rgba(162,155,254,0.35);
+    transition: transform .12s;
+  }
+  #surprise-btn:active { transform: scale(0.97); }
+  #surprise-btn .big { font-size: 3rem; line-height: 1; }
+  #surprise-btn .name { font-size: clamp(1.3rem, 5vw, 1.8rem); font-weight: bold; }
+  #surprise-btn .wins { font-size: 1rem; opacity: 0.85; }
+  #surprise-btn .go { margin-left: auto; font-size: 2.4rem; }
+
+  #level-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 14px;
+  }
+  .level-btn {
+    aspect-ratio: 1;
+    border-radius: 24px;
+    border: 3px solid rgba(255,255,255,0.25);
+    background: linear-gradient(145deg, hsl(var(--h) 75% 62%), hsl(calc(var(--h) + 30) 70% 48%));
+    color: #fff;
+    font-family: var(--font);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+    transition: transform .12s;
+  }
+  .level-btn:active { transform: scale(0.94); }
+  .level-btn .num { font-size: 2.4rem; font-weight: bold; line-height: 1; text-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+  .level-btn .stars { font-size: 1.1rem; letter-spacing: 1px; }
+  .level-btn .stars .off { filter: grayscale(1) brightness(0.6); opacity: 0.45; }
+  .level-btn.locked { background: rgba(255,255,255,0.08); cursor: default; box-shadow: none; }
+  .level-btn.locked .num { opacity: 0.5; font-size: 1.6rem; }
+  .level-btn.next { animation: next-glow 1.4s ease-in-out infinite; }
+  @keyframes next-glow {
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.0), 0 6px 18px rgba(0,0,0,0.3); }
+    50%     { box-shadow: 0 0 0 6px rgba(255,215,0,0.55), 0 6px 18px rgba(0,0,0,0.3); }
+  }
+
+  /* ── Puzzle ── */
+  .play-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 6px 0 10px;
+  }
+  #level-name { font-size: clamp(1.3rem, 5vw, 1.8rem); color: var(--gold); }
+  #mix-btn {
+    font-family: var(--font);
+    font-size: clamp(1rem, 3.5vw, 1.2rem);
+    color: #fff;
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  #mix-btn:active { transform: scale(0.94); }
+
+  #board-wrap {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #board {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(var(--cols), var(--cell));
+    grid-template-rows: repeat(var(--rows), var(--cell));
+    touch-action: manipulation;
+  }
+  .cell { position: relative; width: var(--cell); height: var(--cell); }
+  .cell::before {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 18%;
+    background: rgba(162,155,254,0.26);
+    border: 2px solid rgba(162,155,254,0.4);
+  }
+  .cell.empty::before { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
+  .cell.pad::before { background: rgba(255,215,0,0.16); border-color: rgba(255,215,0,0.45); }
+  .cell.turn { cursor: pointer; }
+  .cell.turn:active::before { background: rgba(162,155,254,0.42); }
+  .cell svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .cell svg.road { transition: transform .28s cubic-bezier(.34,1.56,.64,1); }
+
+  .road-bed  { stroke: #a9a3d9; stroke-width: 30; fill: none; transition: stroke .2s; }
+  .road-line { stroke: rgba(80,60,160,0.5); stroke-width: 4; stroke-dasharray: 8 9; fill: none; }
+  .road-knob { fill: #a9a3d9; transition: fill .2s; }
+  .cell.lit .road-bed { stroke: var(--gold); }
+  .cell.lit .road-knob { fill: var(--gold); }
+  .cell.lit svg.road, .cell.lit svg.arms { filter: drop-shadow(0 0 6px rgba(255,215,0,0.55)); }
+
+  .pad-disc {
+    position: absolute;
+    inset: 16%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #fff6b0, #ffc93c 60%, #e09a00);
+    box-shadow: 0 0 14px rgba(255,215,0,0.5);
+  }
+  .goal {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cell) * 0.46);
+    transition: transform .3s, opacity .3s;
+  }
+  .goal.gone { transform: scale(0); opacity: 0; }
+
+  #hero {
+    position: absolute;
+    left: 0; top: 0;
+    width: var(--cell);
+    height: var(--cell);
+    pointer-events: none;
+    transition: transform .25s ease-in-out;
+    z-index: 5;
+  }
+  #hero .face {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cell) * 0.5);
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.35));
+  }
+  #hero .face.hop { animation: hop .37s ease-out; }
+  @keyframes hop {
+    0%,100% { transform: translateY(0); }
+    45%     { transform: translateY(-38%) scale(1.08); }
+  }
+  #speech {
+    position: absolute;
+    bottom: 82%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.4);
+    opacity: 0;
+    background: #fff;
+    color: #2a1955;
+    font-size: clamp(1.1rem, calc(var(--cell) * 0.22), 2rem);
+    font-weight: bold;
+    padding: 6px 14px;
+    border-radius: 16px;
+    white-space: nowrap;
+    transition: transform .2s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+  }
+  #speech::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -8px;
+    border: 8px solid transparent;
+    border-top-color: #fff;
+  }
+  #speech.show { transform: translateX(-50%) scale(1); opacity: 1; }
+
+  #hint {
+    margin-top: 10px;
+    font-size: clamp(1rem, 3.8vw, 1.3rem);
+    color: rgba(255,255,255,0.75);
+    text-align: center;
+    min-height: 1.5em;
+  }
+
+  /* ── Win card ── */
+  .win-title { font-size: clamp(2rem, 8vw, 2.8rem); color: var(--gold); margin-bottom: 10px; }
+  .win-stars { display: flex; justify-content: center; gap: 10px; margin-bottom: 16px; }
+  .win-star {
+    font-size: clamp(3rem, 12vw, 4.2rem);
+    line-height: 1;
+    opacity: 0;
+    transform: scale(0.2);
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+  }
+  .win-star.on { opacity: 1; transform: scale(1); }
+  .win-star.off { filter: grayscale(1) brightness(0.55); }
+  .win-star.off.on { opacity: 0.35; }
+  .badges { display: flex; justify-content: center; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+  .badge {
+    width: 104px;
+    padding: 10px 4px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.06);
+    opacity: 0.45;
+    font-size: 0.95rem;
+  }
+  .badge .e { font-size: 2rem; display: block; margin-bottom: 4px; }
+  .badge.earned { background: rgba(255,215,0,0.22); border: 2px solid rgba(255,215,0,0.6); opacity: 1; }
+  .win-btns { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .win-btns .h-btn { padding: 12px 22px; }
+  .h-btn-ghost {
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.3);
+    color: #fff;
+    font-size: clamp(1rem, 3.5vw, 1.3rem);
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="token-display" id="token-display">
+    🪙 <span id="token-count">0</span> tokens
+  </div>
+  <div class="score-display">
+    ⭐ <span id="score">0</span>
+  </div>
+  <a href="../" class="back-btn" id="games-btn">← Games</a>
+  <button class="back-btn" id="levels-btn" hidden>← Levels</button>
+</div>
+
+<!-- MAP -->
+<div class="screen" id="map-screen">
+  <h1 id="map-title">🌀 Path Spinners</h1>
+  <div class="map-sub">Turn the tiles. Make a path!</div>
+
+  <button id="surprise-btn">
+    <span class="big">🎲</span>
+    <span>
+      <span class="name">Surprise Level</span><br>
+      <span class="wins" id="surprise-wins">0 wins</span>
+    </span>
+    <span class="go">▶️</span>
+  </button>
+
+  <div id="level-grid"></div>
+</div>
+
+<!-- PUZZLE -->
+<div class="screen" id="play-screen" hidden>
+  <div class="play-head">
+    <div id="level-name">Level 1</div>
+    <button id="mix-btn">↻ Mix</button>
+  </div>
+  <div id="board-wrap">
+    <div id="board"></div>
+  </div>
+  <div id="hint"></div>
+</div>
+
+<!-- WIN CARD -->
+<div class="overlay" id="win-overlay">
+  <div class="ov-card">
+    <div class="win-title">You did it! 🎉</div>
+    <div class="win-stars" id="win-stars"></div>
+    <div class="badges" id="badges"></div>
+    <div class="win-btns">
+      <button class="h-btn h-btn-ghost" id="win-levels">🗺️ Levels</button>
+      <button class="h-btn h-btn-ghost" id="win-again">🔁 Again</button>
+      <button class="h-btn h-btn-green" id="win-next">Next ➡️</button>
+    </div>
+  </div>
+</div>
+
+<div class="secret-modal" id="secret-modal">
+  <div class="sm-card">
+    <div>🔐 Secret Stats 🔐</div>
+    <br>
+    <div>All-time tokens: <strong id="lifetime-val">0</strong> 🪙</div>
+    <br>
+    <button class="sm-close" id="sm-close">Close</button>
+  </div>
+</div>
+
+<div id="confetti-layer"></div>
+<div class="flash-msg" id="flash-msg"></div>
+
+<script src="../../shared/game.js"></script>
+<script>
+// ── Engine ─────────────────────────────────────────────
+// Pure logic, no DOM, so the tests can pull this block out and run it in Node.
+// Sides go clockwise from the top: 0 up, 1 right, 2 down, 3 left.
+// A tile is { shape, spins }. spins only grows, so turning always animates clockwise.
+
+const PIECES = {
+  empty:    { sides: [],        turns: false },
+  start:    { sides: [0,1,2,3], turns: false },  // pads connect on every side
+  end:      { sides: [0,1,2,3], turns: false },
+  straight: { sides: [0,2],     turns: true },   // │
+  corner:   { sides: [0,1],     turns: true },   // └
+  tee:      { sides: [3,1,2],   turns: true },   // ┬
+  cross:    { sides: [0,1,2,3], turns: true },   // ┼
+  deadEnd:  { sides: [0],       turns: true },   // ╵
+};
+const STEP = [[-1,0],[0,1],[1,0],[0,-1]];
+const MAX_SIZE = 7;
+
+const opposite = s => (s + 2) % 4;
+const popcount = m => (m & 1) + (m >> 1 & 1) + (m >> 2 & 1) + (m >> 3 & 1);
+
+/** Open sides of a shape after some quarter turns, as a 4-bit mask. */
+function sidesOf(shape, turns) {
+  let mask = 0;
+  for (const s of PIECES[shape].sides) mask |= 1 << ((s + turns) % 4);
+  return mask;
+}
+const canTurn   = tile => PIECES[tile.shape].turns;
+const openSides = tile => sidesOf(tile.shape, tile.spins % 4);
+const isOpen    = (tile, side) => (openSides(tile) >> side & 1) === 1;
+
+/** Fewest clockwise turns from `from` until the shape opens exactly `target`, or null. */
+function turnsNeeded(shape, from, target) {
+  for (let k = 0; k < 4; k++) if (sidesOf(shape, from + k) === target) return k;
+  return null;
+}
+
+/** The tile that opens exactly these sides (used by the level maker). */
+function fitting(mask) {
+  for (const shape of ['deadEnd', 'straight', 'corner', 'tee', 'cross']) {
+    if (PIECES[shape].sides.length !== popcount(mask)) continue;
+    for (let t = 0; t < 4; t++) if (sidesOf(shape, t) === mask) return { shape, spins: t };
+  }
+  return { shape: 'empty', spins: 0 };
+}
+
+// A board is { rows, cols, tiles: [...row by row], start, end }; start and end are cell indexes.
+
+function neighbor(b, i, side) {
+  const r = Math.floor(i / b.cols) + STEP[side][0];
+  const c = i % b.cols + STEP[side][1];
+  return r >= 0 && r < b.rows && c >= 0 && c < b.cols ? r * b.cols + c : -1;
+}
+
+/** The neighbour on this side if both tiles open toward each other, else -1. */
+function connects(b, i, side) {
+  const n = neighbor(b, i, side);
+  return n >= 0 && isOpen(b.tiles[i], side) && isOpen(b.tiles[n], opposite(side)) ? n : -1;
+}
+
+/** Every cell joined to Start through open sides that line up. */
+function connectedToStart(b) {
+  const seen = new Set([b.start]);
+  const queue = [b.start];
+  while (queue.length) {
+    const i = queue.pop();
+    for (let s = 0; s < 4; s++) {
+      const n = connects(b, i, s);
+      if (n >= 0 && !seen.has(n)) { seen.add(n); queue.push(n); }
+    }
+  }
+  return seen;
+}
+
+const isSolved = b => connectedToStart(b).has(b.end);
+
+/** The shortest route from Start to End, both included. Empty if they don't connect. */
+function heroPath(b) {
+  const cameFrom = new Map();
+  const seen = new Set([b.start]);
+  const queue = [b.start];
+  for (let head = 0; head < queue.length; head++) {
+    const i = queue[head];
+    if (i === b.end) break;
+    for (let s = 0; s < 4; s++) {
+      const n = connects(b, i, s);
+      if (n >= 0 && !seen.has(n)) { seen.add(n); cameFrom.set(n, i); queue.push(n); }
+    }
+  }
+  if (!seen.has(b.end)) return [];
+  const path = [b.end];
+  while (cameFrom.has(path[path.length - 1])) path.push(cameFrom.get(path[path.length - 1]));
+  return path.reverse();
+}
+
+/** Every path piece is joined into the route network. */
+function usesEveryTile(b) {
+  const joined = connectedToStart(b);
+  return b.tiles.every((t, i) => t.shape === 'empty' || joined.has(i));
+}
+
+const turnableCells = b => b.tiles.map((_, i) => i).filter(i => canTurn(b.tiles[i]));
+const copyBoard = b => ({ ...b, tiles: b.tiles.map(t => ({ ...t })) });
+
+/** Fewest turns to get every tile back to the drawn answer. */
+function parFor(solved, board) {
+  return turnableCells(board).reduce((sum, i) => {
+    const t = board.tiles[i];
+    return sum + (turnsNeeded(t.shape, t.spins % 4, openSides(solved.tiles[i])) ?? 0);
+  }, 0);
+}
+
+/** A fresh game from a solved board. Tries a few times so it doesn't start solved. */
+function scramble(solved, rand = Math.random) {
+  let board = copyBoard(solved);
+  for (let tries = 0; tries < 60; tries++) {
+    board = copyBoard(solved);
+    for (const i of turnableCells(board)) board.tiles[i].spins = Math.floor(rand() * 4);
+    if (!isSolved(board)) break;
+  }
+  return { board, par: parFor(solved, board), turnsUsed: 0 };
+}
+
+function turnTile(game, i) {
+  if (!canTurn(game.board.tiles[i])) return;
+  game.board.tiles[i].spins += 1;
+  game.turnsUsed += 1;
+}
+
+/** Stars are earned, never lost: winning is always at least one. */
+function scoreFor(turnsUsed, par, seconds, everyTile) {
+  const fewTurns = turnsUsed <= par + 3;
+  const quick = seconds <= 12 + 4 * par;
+  const stars = Math.min(3, 1 + [fewTurns, quick, everyTile].filter(Boolean).length);
+  return { fewTurns, quick, everyTile, stars };
+}
+
+// Letters a kid could type, plus box-drawing characters for the built-in levels.
+const TILE_CHARS = (() => {
+  const map = {};
+  const add = (chars, shape, spins = 0) => { for (const c of chars) map[c] = { shape, spins }; };
+  add('Ss', 'start');
+  add('Ee', 'end');
+  add('|│Ii', 'straight', 0);
+  add('-─—–=', 'straight', 1);
+  add('Ll└', 'corner', 0);  // up + right
+  add('rR┌', 'corner', 1);  // right + down
+  add('7┐', 'corner', 2);   // down + left
+  add('Jj┘', 'corner', 3);  // left + up
+  add('+┼xX', 'cross');
+  add('Tt┬', 'tee', 0);     // left + right + down
+  add('┤', 'tee', 1);       // up + left + down
+  add('┴', 'tee', 2);       // up + left + right
+  add('├', 'tee', 3);       // up + right + down
+  add('╵^', 'deadEnd', 0);
+  add('╶>', 'deadEnd', 1);
+  add('╷vV', 'deadEnd', 2);
+  add('╴<', 'deadEnd', 3);
+  return map;
+})();
+
+/** A drawn level (already solved) → board. Throws if it has no S, no E, or no path. */
+function readLevel(text) {
+  const lines = text.split(/\r?\n/)
+    .map(line => [...line.replace(/\s/g, '')].slice(0, MAX_SIZE))
+    .filter(line => line.length)
+    .slice(0, MAX_SIZE);
+  if (!lines.length) throw new Error('empty level');
+  const rows = lines.length;
+  const cols = Math.max(...lines.map(l => l.length));
+  const tiles = [];
+  let start = -1, end = -1;
+  lines.forEach((line, r) => {
+    for (let c = 0; c < cols; c++) {
+      let tile = TILE_CHARS[line[c]] ? { ...TILE_CHARS[line[c]] } : { shape: 'empty', spins: 0 };
+      const i = r * cols + c;
+      if (tile.shape === 'start') { if (start < 0) start = i; else tile = { shape: 'empty', spins: 0 }; }
+      if (tile.shape === 'end')   { if (end < 0) end = i;     else tile = { shape: 'empty', spins: 0 }; }
+      tiles.push(tile);
+    }
+  });
+  if (start < 0) throw new Error('needs an S');
+  if (end < 0) throw new Error('needs an E');
+  const board = { rows, cols, tiles, start, end };
+  if (!isSolved(board)) throw new Error('path does not reach E');
+  return board;
+}
+
+// The 12 levels, drawn solved. The game scrambles the turns.
+// Every level joins up completely, so 🧩 "every tile" is always possible.
+const LEVELS = [
+  // 1 — one turn
+  `. . .
+   S ─ E
+   . . .`,
+  // 2 — corners
+  `S ┐ .
+   . │ .
+   . └ E`,
+  // 3 — snake
+  `S ─ ┐
+   ┌ ─ ┘
+   └ ─ E`,
+  // 4 — steps
+  `S ┐ . .
+   . └ ─ ┐
+   . . . │
+   . . . E`,
+  // 5 — the long way round
+  `┌ ─ ─ ┐
+   S . . │
+   . . . │
+   E ─ ─ ┘`,
+  // 6 — crosses
+  `┌ ─ ┐ .
+   S ┼ ┼ ┐
+   . └ ┘ E`,
+  // 7 — first branches
+  `S ─ ┬ ┐
+   . . │ │
+   ╶ ─ ┤ │
+   . . ╵ E`,
+  // 8 — zig zag
+  `┌ ─ ┐ .
+   S . └ ┐
+   . ┌ ─ ┘
+   . └ ─ E`,
+  // 9 — big board
+  `S ─ ┐ . .
+   . . │ . .
+   . ┌ ┘ . .
+   . │ . ┌ E
+   . └ ─ ┘ .`,
+  // 10 — dead ends
+  `. ╷ . . .
+   S ┼ ─ ┐ .
+   . ╵ . │ .
+   . . ╶ ┼ E
+   . . . ╵ .`,
+  // 11 — the winding road
+  `S ┐ ┌ ─ ┐
+   . │ │ . │
+   . └ ┘ . │
+   ┌ ─ ─ ─ ┘
+   └ ─ ─ ─ E`,
+  // 12 — the whole town
+  `S ─ ┬ ─ ┐
+   │ . │ . │
+   ├ ─ ┼ ─ ┤
+   │ . │ . │
+   └ ─ ┴ ─ E`,
+];
+
+function shuffled(list, rand) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** A self-avoiding random walk from `from` to `to` (depth-first, shuffled directions).
+    Gives up on long searches and falls back to an L-shaped route. */
+function randomRoute(b, from, to, minLength, rand) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    let budget = 4000;
+    const path = [from];
+    const visited = new Set([from]);
+    const search = cell => {
+      if (--budget < 0) return false;
+      if (cell === to) return path.length >= minLength;
+      for (const side of shuffled([0, 1, 2, 3], rand)) {
+        const next = neighbor(b, cell, side);
+        if (next < 0 || visited.has(next)) continue;
+        if (next === to && path.length + 1 < minLength) continue;  // only reach E once long enough
+        visited.add(next);
+        path.push(next);
+        if (search(next)) return true;
+        path.pop();
+        visited.delete(next);
+      }
+      return false;
+    };
+    if (search(from)) return path;
+  }
+  const path = [from];
+  let r = Math.floor(from / b.cols), c = from % b.cols;
+  const tr = Math.floor(to / b.cols), tc = to % b.cols;
+  while (c !== tc) { c += c < tc ? 1 : -1; path.push(r * b.cols + c); }
+  while (r !== tr) { r += r < tr ? 1 : -1; path.push(r * b.cols + c); }
+  return path;
+}
+
+/** 🎲 Surprise Level: always solvable, because it starts from an answer.
+    1. Walk a random route from S to E.  2. Grow side branches into some empty cells.
+    3. Give every cell the tile that fits its links; scramble() turns them later. */
+function makeLevel(rows, cols, rand = Math.random) {
+  rows = Math.min(Math.max(rows, 2), MAX_SIZE);
+  cols = Math.min(Math.max(cols, 2), MAX_SIZE);
+  const n = rows * cols;
+  const blank = { rows, cols, tiles: [], start: 0, end: 0 };
+  const pick = list => list[Math.floor(rand() * list.length)];
+  const distance = (a, b) =>
+    Math.abs(Math.floor(a / cols) - Math.floor(b / cols)) + Math.abs(a % cols - b % cols);
+
+  // S and E far enough apart that the route is worth walking.
+  const minApart = Math.max(2, Math.floor((rows + cols) / 2));
+  let start, end;
+  do {
+    start = Math.floor(rand() * n);
+    end = Math.floor(rand() * n);
+  } while (distance(start, end) < minApart);
+
+  const route = randomRoute(blank, start, end, Math.floor(n / 3), rand);
+
+  const open = new Array(n).fill(0);
+  const link = (a, b) => {
+    for (let s = 0; s < 4; s++) {
+      if (neighbor(blank, a, s) === b) { open[a] |= 1 << s; open[b] |= 1 << opposite(s); }
+    }
+  };
+  for (let k = 1; k < route.length; k++) link(route[k - 1], route[k]);
+
+  // Branches: attach random empty cells to a neighbour already in the network.
+  const inNetwork = new Set(route);
+  const target = inNetwork.size + Math.floor((n - inNetwork.size) * (0.4 + rand() * 0.45));
+  while (inNetwork.size < target) {
+    const options = [];
+    for (let i = 0; i < n; i++) {
+      if (inNetwork.has(i)) continue;
+      const touches = [0, 1, 2, 3].some(s => {
+        const m = neighbor(blank, i, s);
+        return m >= 0 && inNetwork.has(m) && m !== end;  // E stays the end of the line
+      });
+      if (touches) options.push(i);
+    }
+    if (!options.length) break;
+    const cell = pick(options);
+    const anchors = [0, 1, 2, 3].map(s => neighbor(blank, cell, s))
+      .filter(m => m >= 0 && inNetwork.has(m) && m !== end && popcount(open[m]) < 4);
+    if (!anchors.length) break;
+    link(pick(anchors), cell);
+    inNetwork.add(cell);
+  }
+
+  const tiles = open.map((mask, i) =>
+    i === start ? { shape: 'start', spins: 0 } :
+    i === end   ? { shape: 'end', spins: 0 } :
+    mask        ? fitting(mask) : { shape: 'empty', spins: 0 });
+  return { rows, cols, tiles, start, end };
+}
+// ── End engine ─────────────────────────────────────────
+
+// ── Saved progress ─────────────────────────────────────
+const STARS_KEY = 'path-spinners-stars';
+const SURPRISE_KEY = 'path-spinners-surprise-wins';
+
+function loadStars() {
+  try { return JSON.parse(localStorage.getItem(STARS_KEY)) || {}; } catch (e) { return {}; }
+}
+function loadSurpriseWins() {
+  try { return parseInt(localStorage.getItem(SURPRISE_KEY) || '0', 10) || 0; } catch (e) { return 0; }
+}
+function save() {
+  try {
+    localStorage.setItem(STARS_KEY, JSON.stringify(stars));
+    localStorage.setItem(SURPRISE_KEY, String(surpriseWins));
+  } catch (e) { /* private mode: progress lasts until the tab closes */ }
+}
+
+const BUILT_INS = LEVELS.map(readLevel);
+let stars = loadStars();
+let surpriseWins = loadSurpriseWins();
+
+const starsFor = i => stars['b' + i] || 0;
+const isUnlocked = i => i === 0 || starsFor(i - 1) > 0;
+const totalStars = () => BUILT_INS.reduce((sum, _, i) => sum + starsFor(i), 0);
+
+// ── Sounds (made in code, no files) ────────────────────
+let audioCtx = null;
+function audio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { return null; }
+  return audioCtx;
+}
+function tone({ type = 'sine', f0, f1 = f0, dur, vol = 0.2, at = 0 }) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + at;
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(f0, t);
+  if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+const SOUNDS = {
+  click: () => tone({ type: 'triangle', f0: 1800, f1: 700, dur: 0.06, vol: 0.18 }),
+  boing: () => tone({ type: 'sine', f0: 190, f1: 620, dur: 0.3, vol: 0.3 }),
+  ding:  () => { tone({ f0: 1318.5, dur: 0.9, vol: 0.18 }); tone({ f0: 2637, dur: 0.5, vol: 0.07 }); },
+  yay:   () => {
+    [523.25, 659.25, 783.99].forEach((f, k) => tone({ type: 'triangle', f0: f, dur: 0.16, vol: 0.2, at: k * 0.1 }));
+    tone({ type: 'triangle', f0: 1046.5, dur: 0.6, vol: 0.22, at: 0.3 });
+  },
+};
+const play = name => SOUNDS[name] && SOUNDS[name]();
+
+// ── Screen elements ────────────────────────────────────
+const $ = id => document.getElementById(id);
+const mapScreen = $('map-screen'), playScreen = $('play-screen');
+const boardEl = $('board'), boardWrap = $('board-wrap');
+const HERO = '🦄', GOAL = '🍎';
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+// ── Map ────────────────────────────────────────────────
+function starRow(n) {
+  return [0, 1, 2].map(k => `<span class="${k < n ? '' : 'off'}">⭐</span>`).join('');
+}
+
+function showMap() {
+  current = null;
+  run++;
+  $('win-overlay').classList.remove('show');
+  document.body.classList.remove('playing');
+  playScreen.hidden = true;
+  mapScreen.hidden = false;
+  $('levels-btn').hidden = true;
+  $('games-btn').hidden = false;
+  $('score').textContent = totalStars();
+  $('surprise-wins').textContent = surpriseWins === 1 ? '1 win' : `${surpriseWins} wins`;
+
+  const nextUp = BUILT_INS.findIndex((_, i) => isUnlocked(i) && starsFor(i) === 0);
+  $('level-grid').innerHTML = BUILT_INS.map((_, i) => {
+    const locked = !isUnlocked(i);
+    const cls = 'level-btn' + (locked ? ' locked' : '') + (i === nextUp ? ' next' : '');
+    return `<button class="${cls}" data-level="${i}" style="--h:${(i * 29 + 250) % 360}"
+              aria-label="Level ${i + 1}${locked ? ', locked' : ''}">
+              <span class="num">${locked ? '🔒' : i + 1}</span>
+              <span class="stars">${locked ? '' : starRow(starsFor(i))}</span>
+            </button>`;
+  }).join('');
+}
+
+$('level-grid').addEventListener('click', e => {
+  const btn = e.target.closest('.level-btn');
+  if (!btn) return;
+  const i = Number(btn.dataset.level);
+  audio();
+  if (isUnlocked(i)) startLevel({ kind: 'built', i });
+  else Hallie.flashMessage('Win the level before! 🔒', 1300);
+});
+$('surprise-btn').addEventListener('click', () => { audio(); startLevel({ kind: 'surprise' }); });
+$('levels-btn').addEventListener('click', showMap);
+
+// Grown-ups: hold the title for 2 seconds to clear all stars.
+(function () {
+  let timer = null;
+  const title = $('map-title');
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  title.addEventListener('pointerdown', () => {
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      if (confirm('Clear all Path Spinners stars? Every level locks again, starting from Level 1.')) {
+        stars = {};
+        surpriseWins = 0;
+        save();
+        showMap();
+      }
+    }, 2000);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => title.addEventListener(t, cancel));
+  title.addEventListener('contextmenu', e => e.preventDefault());
+})();
+
+// ── Puzzle ─────────────────────────────────────────────
+let current = null;   // { ref, solved, game, connected, won, startedAt, heroCell }
+let run = 0;          // bumps whenever a puzzle starts or ends, so old animations stop
+
+function levelTitle(ref) {
+  return ref.kind === 'surprise' ? '🎲 Surprise!' : `Level ${ref.i + 1}`;
+}
+
+function surpriseSize() {
+  const done = BUILT_INS.filter((_, i) => starsFor(i) > 0).length;
+  return done < 3 ? 3 : done < 8 ? 4 : 4 + Math.floor(Math.random() * 2);
+}
+
+function startLevel(ref) {
+  run++;
+  const size = ref.kind === 'surprise' ? surpriseSize() : 0;
+  const solved = ref.kind === 'surprise' ? makeLevel(size, size) : BUILT_INS[ref.i];
+  current = { ref, solved, game: scramble(solved), won: false, startedAt: performance.now() };
+  current.connected = connectedToStart(current.game.board);
+  current.heroCell = current.game.board.start;
+
+  $('win-overlay').classList.remove('show');
+  document.body.classList.add('playing');
+  mapScreen.hidden = true;
+  playScreen.hidden = false;
+  $('games-btn').hidden = true;
+  $('levels-btn').hidden = false;
+  $('level-name').textContent = levelTitle(ref);
+  $('hint').textContent = `Tap a tile to turn it! Make a path to the ${GOAL}`;
+
+  buildBoard();
+  layout();
+  // A puzzle that can't be scrambled (all crosses) is won as soon as it opens.
+  if (isSolved(current.game.board)) solvedIt();
+}
+
+$('mix-btn').addEventListener('click', () => {
+  if (!current || current.won) return;
+  audio();
+  play('click');
+  if (current.ref.kind === 'surprise') {
+    // Same surprise board, new turns.
+    const { ref, solved } = current;
+    run++;
+    current = { ref, solved, game: scramble(solved), won: false, startedAt: performance.now() };
+    current.connected = connectedToStart(current.game.board);
+    current.heroCell = current.game.board.start;
+    buildBoard();
+    layout();
+  } else {
+    startLevel(current.ref);
+  }
+});
+
+// Road drawings in a 100×100 box, before turning.
+const ARM = ['M50 0 V50', 'M50 50 H100', 'M50 50 V100', 'M0 50 H50'];
+const ROAD = {
+  straight: 'M50 0 V100',
+  corner:   'M50 0 A50 50 0 0 0 100 50',
+  tee:      'M0 50 H100 M50 50 V100',
+  cross:    'M0 50 H100 M50 0 V100',
+  deadEnd:  'M50 0 V50',
+};
+
+function roadSVG(d, knob) {
+  return `<svg class="road" viewBox="0 0 100 100" aria-hidden="true">
+    <path class="road-bed" d="${d}"/>
+    ${knob ? '<circle class="road-knob" cx="50" cy="50" r="22"/>' : ''}
+    <path class="road-line" d="${d}"/>
+  </svg>`;
+}
+
+function buildBoard() {
+  const b = current.game.board;
+  boardEl.style.setProperty('--rows', b.rows);
+  boardEl.style.setProperty('--cols', b.cols);
+  let html = '';
+  b.tiles.forEach((t, i) => {
+    if (t.shape === 'empty') {
+      html += `<div class="cell empty"></div>`;
+    } else if (t.shape === 'start' || t.shape === 'end') {
+      html += `<div class="cell pad" data-i="${i}">
+        <svg class="arms" viewBox="0 0 100 100" aria-hidden="true"></svg>
+        <div class="pad-disc"></div>
+        ${t.shape === 'end' ? `<div class="goal">${GOAL}</div>` : ''}
+      </div>`;
+    } else {
+      html += `<div class="cell turn" data-i="${i}" role="button" aria-label="Turn tile">
+        ${roadSVG(ROAD[t.shape], t.shape === 'deadEnd')}
+      </div>`;
+    }
+  });
+  html += `<div id="hero"><div id="speech"></div><div class="face">${HERO}</div></div>`;
+  boardEl.innerHTML = html;
+  b.tiles.forEach((t, i) => { if (canTurn(t)) setRotation(i, false); });
+  placeHero(current.heroCell, false);
+  refresh();
+}
+
+function cellEl(i) { return boardEl.querySelector(`[data-i="${i}"]`); }
+
+function setRotation(i, animate) {
+  const svg = cellEl(i).querySelector('svg.road');
+  if (!animate) svg.style.transition = 'none';
+  svg.style.transform = `rotate(${current.game.board.tiles[i].spins * 90}deg)`;
+  if (!animate) { svg.getBoundingClientRect(); svg.style.transition = ''; }
+}
+
+/** Light up everything joined to S, and draw the pads' arms toward joined tiles. */
+function refresh() {
+  const b = current.game.board;
+  current.connected = connectedToStart(b);
+  boardEl.querySelectorAll('.cell[data-i]').forEach(el => {
+    el.classList.toggle('lit', current.connected.has(Number(el.dataset.i)));
+  });
+  for (const pad of [b.start, b.end]) {
+    const arms = [0, 1, 2, 3].filter(s => connects(b, pad, s) >= 0);
+    cellEl(pad).querySelector('svg.arms').innerHTML =
+      arms.map(s => `<path class="road-bed" d="${ARM[s]}"/><path class="road-line" d="${ARM[s]}"/>`).join('');
+  }
+}
+
+boardEl.addEventListener('click', e => {
+  const el = e.target.closest('.cell.turn');
+  if (!el || !current || current.won) return;
+  audio();
+  const i = Number(el.dataset.i);
+  turnTile(current.game, i);
+  setRotation(i, true);
+  play('click');
+  refresh();
+  if (isSolved(current.game.board)) solvedIt();
+});
+
+function layout() {
+  if (!current) return;
+  const b = current.game.board;
+  const w = boardWrap.clientWidth;
+  const h = boardWrap.clientHeight;
+  const cell = Math.max(40, Math.min(160, Math.floor(Math.min(w / b.cols, h / b.rows))));
+  boardEl.style.setProperty('--cell', cell + 'px');
+  placeHero(current.heroCell, false);
+}
+window.addEventListener('resize', layout);
+
+// ── Hero ───────────────────────────────────────────────
+function placeHero(i, animate) {
+  const hero = $('hero');
+  if (!hero || !current) return;
+  const b = current.game.board;
+  const cell = parseFloat(getComputedStyle(boardEl).getPropertyValue('--cell')) || 0;
+  current.heroCell = i;
+  if (!animate) hero.style.transition = 'none';
+  hero.style.transform = `translate(${(i % b.cols) * cell}px, ${Math.floor(i / b.cols) * cell}px)`;
+  if (!animate) { hero.getBoundingClientRect(); hero.style.transition = ''; }
+}
+
+async function hop() {
+  const face = $('hero').querySelector('.face');
+  face.classList.remove('hop');
+  face.getBoundingClientRect();
+  face.classList.add('hop');
+  play('boing');
+  await sleep(370);
+}
+
+async function say(words) {
+  const bubble = $('speech');
+  bubble.textContent = words;
+  bubble.classList.add('show');
+  await sleep(1400);
+  bubble.classList.remove('show');
+}
+
+// ── Winning ────────────────────────────────────────────
+function solvedIt() {
+  const g = current.game;
+  current.won = true;
+  const seconds = (performance.now() - current.startedAt) / 1000;
+  const score = scoreFor(g.turnsUsed, g.par, seconds, usesEveryTile(g.board));
+  current.score = score;
+
+  const ref = current.ref;
+  if (ref.kind === 'surprise') {
+    surpriseWins += 1;
+  } else if (score.stars > starsFor(ref.i)) {
+    stars['b' + ref.i] = score.stars;
+  }
+  save();
+  Hallie.addSession(1 + (score.stars === 3 ? 1 : 0));
+  $('score').textContent = totalStars();
+  $('hint').textContent = 'Yay! 🎉';
+  celebrate(run);
+}
+
+/** Walk the path, jump, jump, "Yay!", confetti, then the win card. */
+async function celebrate(id) {
+  const alive = () => id === run && current && current.won;
+  await sleep(450);
+  const path = heroPath(current.game.board);
+  for (const i of path.slice(1)) {
+    if (!alive()) return;
+    placeHero(i, true);
+    await sleep(270);
+  }
+  if (!alive()) return;
+  const goal = boardEl.querySelector('.goal');
+  if (goal) goal.classList.add('gone');
+  await hop();
+  await sleep(200);
+  if (!alive()) return;
+  await hop();
+  await sleep(200);
+  if (!alive()) return;
+  play('yay');
+  Hallie.confetti();
+  await say('Yay!');
+  await sleep(300);
+  if (!alive()) return;
+  showWinCard();
+}
+
+function showWinCard() {
+  const { score, ref } = current;
+  $('win-stars').innerHTML = [0, 1, 2].map(k =>
+    `<span class="win-star ${k < score.stars ? '' : 'off'}">⭐</span>`).join('');
+  $('badges').innerHTML = [
+    ['👆', 'Few turns', score.fewTurns],
+    ['⚡️', 'Quick', score.quick],
+    ['🧩', 'Every tile', score.everyTile],
+  ].map(([e, label, earned]) =>
+    `<div class="badge ${earned ? 'earned' : ''}"><span class="e">${e}</span>${label}</div>`).join('');
+
+  const surprise = ref.kind === 'surprise';
+  $('win-again').hidden = surprise;
+  $('win-next').textContent = surprise || ref.i === BUILT_INS.length - 1 ? '🎲 Another!' : 'Next ➡️';
+  $('win-overlay').classList.add('show');
+
+  const id = run;
+  $('win-stars').querySelectorAll('.win-star').forEach((el, k) => {
+    setTimeout(() => {
+      if (id !== run) return;
+      el.classList.add('on');
+      if (k < score.stars) play('ding');
+    }, 250 * (k + 1));
+  });
+}
+
+$('win-levels').addEventListener('click', showMap);
+$('win-again').addEventListener('click', () => startLevel(current.ref));
+$('win-next').addEventListener('click', () => {
+  const ref = current.ref;
+  if (ref.kind === 'built' && ref.i + 1 < BUILT_INS.length) startLevel({ kind: 'built', i: ref.i + 1 });
+  else startLevel({ kind: 'surprise' });
+});
+
+// Test hook (only with ?test in the URL): turn every tile back to the drawn answer.
+if (new URLSearchParams(location.search).has('test')) {
+  window.__ps = {
+    solve() {
+      const b = current.game.board;
+      for (const i of turnableCells(b)) {
+        const need = turnsNeeded(b.tiles[i].shape, b.tiles[i].spins % 4, openSides(current.solved.tiles[i]));
+        for (let k = 0; k < need; k++) { turnTile(current.game, i); }
+        setRotation(i, true);
+      }
+      refresh();
+      if (isSolved(b) && !current.won) solvedIt();
+    },
+    get current() { return current; },
+  };
+}
+
+// ── Init ───────────────────────────────────────────────
+Hallie.initSecretTap($('token-display'));
+showMap();
+</script>
+</body>
+</html>
