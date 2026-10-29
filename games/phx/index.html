@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Phoenix — Hallie's Games</title>
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  html, body { height: 100%; }
+  body {
+    height: 100dvh;
+    overflow: hidden;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    touch-action: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Portrait: screen on top, pad + buttons below. Landscape phone: pad | screen | buttons. */
+  #play {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 720px;
+    padding: 8px 16px 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    grid-template-areas: "stage stage" "left right";
+    align-content: center;
+    gap: 20px;
+  }
+  /* Safari's floating bottom bar covers the page; safe-area doesn't include it */
+  @media (hover: none) and (orientation: portrait) and (display-mode: browser) {
+    #play { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+  }
+  @media (orientation: landscape) and (max-height: 520px) {
+    #play {
+      max-width: none;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr);
+      grid-template-areas: "left stage right";
+      align-content: stretch;
+      align-items: center;
+    }
+  }
+
+  #stage {
+    grid-area: stage;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .bezel {
+    background: #1d2024;
+    border-radius: 14px;
+    padding: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.06);
+    line-height: 0;
+  }
+  #screen {
+    display: block;
+    background: rgb(141,184,28);
+    border-radius: 2px;
+    image-rendering: pixelated;
+    touch-action: none;
+  }
+  #canvas { position: absolute; left: -10000px; top: 0; }
+
+  /* Controls */
+  .pad-group, .btn-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .pad-group { grid-area: left; }
+  .btn-group { grid-area: right; flex-direction: column; }
+
+  /* The whole square is the touch surface (direction comes from the thumb's
+     angle), so it fills its column, up to a comfortable maximum. */
+  .pad-group { width: 100%; }
+  #dpad {
+    position: relative;
+    width: 100%;
+    max-width: 260px;
+    aspect-ratio: 1;
+    touch-action: none;
+  }
+  @media (orientation: landscape) and (max-height: 520px) {
+    #dpad { width: min(calc(100dvh - 100px), 32vw); }
+  }
+  #dpad .arm {
+    position: absolute;
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.7);
+    font-size: 1.2rem;
+    pointer-events: none;
+    transition: background .06s;
+  }
+  #dpad .arm.on { background: rgba(100,200,255,0.45); color: #fff; }
+  #dpad .up    { left: 33%; top: 0;     width: 34%; height: 37%; }
+  #dpad .down  { left: 33%; bottom: 0;  width: 34%; height: 37%; }
+  #dpad .left  { top: 33%;  left: 0;    width: 37%; height: 34%; }
+  #dpad .right { top: 33%;  right: 0;   width: 37%; height: 34%; }
+
+  .round {
+    border: none;
+    border-radius: 50%;
+    font-family: var(--font);
+    color: #fff;
+    touch-action: none;
+    -webkit-user-select: none;
+  }
+  #fire {
+    width: 88px;
+    height: 88px;
+    background: var(--red);
+    box-shadow: 0 5px 0 #b33d3d;
+    font-size: 1.3rem;
+  }
+  #fire.on { transform: translateY(4px); box-shadow: 0 1px 0 #b33d3d; }
+  /* TI keys the game uses: 1–5 menus and weapons, ENTER buys/pauses, MODE leaves the shop (saves & quits mid-game) */
+  .keys {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    gap: 8px;
+  }
+  .tk {
+    height: 44px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.05;
+    transition: opacity .15s;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.25);
+    font-family: var(--font);
+    font-size: 0.95rem;
+    color: rgba(255,255,255,0.85);
+    touch-action: none;
+    -webkit-user-select: none;
+  }
+  .tk b { font-weight: normal; }
+  .tk small { font-size: 0.6rem; color: rgba(255,255,255,0.6); white-space: nowrap; }
+  .tk small:empty { display: none; }
+  .tk[data-key="0x37"] b, .tk.enter b { font-size: 0.75rem; }
+  /* Keys that do nothing on the current screen fade back (they still work) */
+  .tk.idle, #fire.idle { opacity: 0.35; }
+  #fire { transition: opacity .15s; }
+  #fire b { font-weight: normal; }
+  .tk.enter { grid-column: span 3; }
+  .tk.on { background: rgba(100,200,255,0.45); color: #fff; }
+
+  #hint {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.4);
+    text-align: center;
+  }
+  @media (hover: none) { #hint { display: none; } }
+
+  #credits {
+    flex-shrink: 0;
+    padding: 0 16px 8px;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.35);
+    text-align: center;
+  }
+  #credits a { color: inherit; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="score-display">🔥 Phoenix</div>
+  <a href="../" class="back-btn">← Games</a>
+</div>
+
+<div id="play">
+  <div class="pad-group">
+    <div id="dpad" aria-label="Move">
+      <div class="arm up">▲</div>
+      <div class="arm left">◀</div>
+      <div class="arm right">▶</div>
+      <div class="arm down">▼</div>
+    </div>
+  </div>
+
+  <div id="stage">
+    <div class="bezel"><canvas id="screen"></canvas></div>
+  </div>
+
+  <div class="btn-group">
+    <button class="round" id="fire"><b>FIRE</b></button>
+    <div class="keys">
+      <button class="tk" data-key="0x22"><b>1</b><small></small></button>
+      <button class="tk" data-key="0x1A"><b>2</b><small></small></button>
+      <button class="tk" data-key="0x12"><b>3</b><small></small></button>
+      <button class="tk" data-key="0x23"><b>4</b><small></small></button>
+      <button class="tk" data-key="0x1B"><b>5</b><small></small></button>
+      <button class="tk" data-key="0x37"><b>MODE</b><small></small></button>
+      <button class="tk enter" data-key="0x09"><b>ENTER</b><small></small></button>
+    </div>
+    <div id="hint">Arrows move · Space fires · 1–5 weapons · Enter buys/pauses · Esc = MODE</div>
+  </div>
+</div>
+
+<div id="credits">
+  Phoenix by Patrick Davidson (public domain) ·
+  emulator: <a href="https://gitlab.com/taricorp/tihle">tihle</a> (<a href="emu/COPYING">GPL-3.0</a>)
+</div>
+
+<!-- The emulator draws here (offscreen); phx.js recolors it and copies it to #screen -->
+<canvas id="canvas" width="384" height="256"></canvas>
+
+<script src="phx.js"></script>
+</body>
+</html>
