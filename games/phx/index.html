@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="../../shared/style.css">
 <style>
   html, body { height: 100%; }
+  html { background: var(--bg-dark); }
   body {
     height: 100dvh;
     overflow: hidden;
@@ -17,31 +18,34 @@
     -webkit-touch-callout: none;
   }
 
-  /* Portrait: screen on top, pad + buttons below. Landscape phone: pad | screen | buttons. */
+  /* Portrait: screen on top, D-pad + FIRE below, menu keys in a row along the
+     bottom. Landscape phone: D-pad | screen | FIRE, keys row underneath. */
   #play {
     flex: 1;
     min-height: 0;
     width: 100%;
     max-width: 720px;
-    padding: 8px 16px 16px;
+    padding: 4px 16px 12px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
-    grid-template-areas: "stage stage" "left right";
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "stage stage" "left right" "keys keys";
     align-content: center;
-    gap: 20px;
+    gap: 12px;
   }
   /* Safari's floating bottom bar covers the page; safe-area doesn't include it */
   @media (hover: none) and (orientation: portrait) and (display-mode: browser) {
-    #play { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+    #play { padding-bottom: calc(env(safe-area-inset-bottom) + 84px); }
   }
   @media (orientation: landscape) and (max-height: 520px) {
     #play {
       max-width: none;
       grid-template-columns: auto minmax(0, 1fr) auto;
-      grid-template-rows: minmax(0, 1fr);
-      grid-template-areas: "left stage right";
+      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-areas: "left stage right" "keys keys keys";
       align-content: stretch;
+      gap: 10px 20px;
+      padding-bottom: 10px;
       align-items: center;
     }
   }
@@ -79,7 +83,7 @@
     gap: 14px;
   }
   .pad-group { grid-area: left; }
-  .btn-group { grid-area: right; flex-direction: column; }
+  .btn-group { grid-area: right; width: 100%; }
 
   /* The whole square is the touch surface (direction comes from the thumb's
      angle), so it fills its column, up to a comfortable maximum. */
@@ -87,31 +91,23 @@
   #dpad {
     position: relative;
     width: 100%;
-    max-width: 260px;
+    max-width: 220px;
     aspect-ratio: 1;
     touch-action: none;
   }
   @media (orientation: landscape) and (max-height: 520px) {
-    #dpad { width: min(calc(100dvh - 100px), 32vw); }
+    #play #dpad { width: min(calc(100dvh - 150px), 30vw); }
+    #play .key-row { padding-top: 0; } /* the screen sits between, so there's room already */
   }
-  #dpad .arm {
-    position: absolute;
-    background: rgba(255,255,255,0.12);
-    border: 2px solid rgba(255,255,255,0.25);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255,255,255,0.7);
-    font-size: 1.2rem;
-    pointer-events: none;
-    transition: background .06s;
-  }
-  #dpad .arm.on { background: rgba(100,200,255,0.45); color: #fff; }
-  #dpad .up    { left: 33%; top: 0;     width: 34%; height: 37%; }
-  #dpad .down  { left: 33%; bottom: 0;  width: 34%; height: 37%; }
-  #dpad .left  { top: 33%;  left: 0;    width: 37%; height: 34%; }
-  #dpad .right { top: 33%;  right: 0;   width: 37%; height: 34%; }
+  /* One rounded cross, like a real controller: navy body, white arrows, and
+     the landing page's pink-purple rainbow in the center button. A held arm
+     lights up in the shared --blue. */
+  #dpad svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  #dpad .body { fill: url(#dpad-fill); stroke: rgba(255,255,255,0.28); stroke-width: 1.2; }
+  #dpad .glow { fill: var(--blue); opacity: 0; transition: opacity .06s; }
+  #dpad .arrow { fill: rgba(255,255,255,0.88); transition: fill .06s; }
+  #dpad .arm.on .glow { opacity: 0.4; }
+  #dpad .arm.on .arrow { fill: #fff; }
 
   .round {
     border: none;
@@ -121,19 +117,23 @@
     touch-action: none;
     -webkit-user-select: none;
   }
+  /* As big as the D-pad: it's the button you hold the whole game */
   #fire {
-    width: 88px;
-    height: 88px;
+    flex-shrink: 0; /* width/height set by phx.js: the D-pad's arrow span */
     background: var(--red);
-    box-shadow: 0 5px 0 #b33d3d;
-    font-size: 1.3rem;
+    box-shadow: 0 6px 0 #b33d3d;
+    font-size: 1.8rem;
   }
-  #fire.on { transform: translateY(4px); box-shadow: 0 1px 0 #b33d3d; }
-  /* TI keys the game uses: 1–5 menus and weapons, ENTER buys/pauses, MODE leaves the shop (saves & quits mid-game) */
+  #fire.on { transform: translateY(5px); box-shadow: 0 1px 0 #b33d3d; }
+  /* TI keys the game uses: 1–5 menus and weapons, ENTER buys/pauses, CLEAR leaves the shop/settings and quits */
+  /* Extra room above the keys so a thumb on the D-pad or FIRE doesn't
+     brush them (padding, not margin, so phx.js's height math includes it) */
+  .key-row { grid-area: keys; display: flex; flex-direction: column; gap: 8px; padding-top: 20px; }
+  @media (max-height: 600px) { #play .key-row { padding-top: 0; } } /* short phones need the room for the screen */
   .keys {
     display: grid;
-    grid-template-columns: repeat(3, 52px);
-    gap: 8px;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.4fr) minmax(0, 1.4fr);
+    gap: 6px;
   }
   .tk {
     height: 44px;
@@ -154,14 +154,14 @@
     -webkit-user-select: none;
   }
   .tk b { font-weight: normal; }
-  .tk small { font-size: 0.6rem; color: rgba(255,255,255,0.6); white-space: nowrap; }
+  .tk small { font-size: 0.58rem; color: rgba(255,255,255,0.6); white-space: nowrap; }
   .tk small:empty { display: none; }
-  .tk[data-key="0x37"] b, .tk.enter b { font-size: 0.75rem; }
+  .tk[data-key="0x0F"] b, .tk.enter b { font-size: 0.75rem; }
   /* Keys that do nothing on the current screen fade back (they still work) */
-  .tk.idle, #fire.idle { opacity: 0.35; }
-  #fire { transition: opacity .15s; }
+  .tk.idle { opacity: 0.35; }
+  #fire { transition: filter .15s; }
+  #fire.idle { filter: saturate(0.35) brightness(0.55); }
   #fire b { font-weight: normal; }
-  .tk.enter { grid-column: span 3; }
   .tk.on { background: rgba(100,200,255,0.45); color: #fff; }
 
   #hint {
@@ -173,8 +173,8 @@
 
   #credits {
     flex-shrink: 0;
-    padding: 0 16px 8px;
-    font-size: 0.7rem;
+    padding: 0 16px 6px;
+    font-size: 0.62rem;
     color: rgba(255,255,255,0.35);
     text-align: center;
   }
@@ -191,10 +191,28 @@
 <div id="play">
   <div class="pad-group">
     <div id="dpad" aria-label="Move">
-      <div class="arm up">▲</div>
-      <div class="arm left">◀</div>
-      <div class="arm right">▶</div>
-      <div class="arm down">▼</div>
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <linearGradient id="dpad-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#34445f"/>
+            <stop offset="1" stop-color="#1e2a3d"/>
+          </linearGradient>
+          <linearGradient id="dpad-rainbow" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ff85e1"/>
+            <stop offset=".5" stop-color="#c084fc"/>
+            <stop offset="1" stop-color="#a855f7"/>
+          </linearGradient>
+          <clipPath id="dpad-clip"><path id="dpad-shape" d="M39 1H61Q66 1 66 6V34H94Q99 34 99 39V61Q99 66 94 66H66V94Q66 99 61 99H39Q34 99 34 94V66H6Q1 66 1 61V39Q1 34 6 34H34V6Q34 1 39 1Z"/></clipPath>
+        </defs>
+        <use href="#dpad-shape" class="body"/>
+        <g clip-path="url(#dpad-clip)">
+          <g class="arm up"><rect class="glow" x="34" y="0" width="32" height="34"/><path class="arrow" d="M50 11L59 24H41Z"/></g>
+          <g class="arm down"><rect class="glow" x="34" y="66" width="32" height="34"/><path class="arrow" d="M50 89L41 76H59Z"/></g>
+          <g class="arm left"><rect class="glow" x="0" y="34" width="34" height="32"/><path class="arrow" d="M11 50L24 41V59Z"/></g>
+          <g class="arm right"><rect class="glow" x="66" y="34" width="34" height="32"/><path class="arrow" d="M89 50L76 59V41Z"/></g>
+        </g>
+        <circle cx="50" cy="50" r="8" fill="url(#dpad-rainbow)"/>
+      </svg>
     </div>
   </div>
 
@@ -204,22 +222,25 @@
 
   <div class="btn-group">
     <button class="round" id="fire"><b>FIRE</b></button>
+  </div>
+
+  <div class="key-row">
     <div class="keys">
       <button class="tk" data-key="0x22"><b>1</b><small></small></button>
       <button class="tk" data-key="0x1A"><b>2</b><small></small></button>
       <button class="tk" data-key="0x12"><b>3</b><small></small></button>
       <button class="tk" data-key="0x23"><b>4</b><small></small></button>
       <button class="tk" data-key="0x1B"><b>5</b><small></small></button>
-      <button class="tk" data-key="0x37"><b>MODE</b><small></small></button>
+      <button class="tk" data-key="0x0F"><b>CLEAR</b><small></small></button>
       <button class="tk enter" data-key="0x09"><b>ENTER</b><small></small></button>
     </div>
-    <div id="hint">Arrows move · Space fires · 1–5 weapons · Enter buys/pauses · Esc = MODE</div>
+    <div id="hint">Arrows move · Space fires · 1–5 weapons · Enter buys/pauses · Esc = CLEAR</div>
   </div>
 </div>
 
 <div id="credits">
   Phoenix by Patrick Davidson (public domain) ·
-  emulator: <a href="https://gitlab.com/taricorp/tihle">tihle</a> (<a href="emu/COPYING">GPL-3.0</a>)
+  <a href="https://gitlab.com/taricorp/tihle">tihle</a> emulator (<a href="emu/COPYING">GPL-3.0</a>)
 </div>
 
 <!-- The emulator draws here (offscreen); phx.js recolors it and copies it to #screen -->

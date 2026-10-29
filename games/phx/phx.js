@@ -13,7 +13,7 @@
   // TI-83 Plus scancodes (tihle src/keyboard.rs, Phoenix keys.i)
   const TI = {
     down: 0x01, left: 0x02, right: 0x03, up: 0x04,
-    enter: 0x09, second: 0x36, alpha: 0x30, mode: 0x37, del: 0x38,
+    enter: 0x09, second: 0x36, alpha: 0x30, clear: 0x0F,
     1: 0x22, 2: 0x1A, 3: 0x12, 4: 0x23, 5: 0x1B,
   };
 
@@ -36,6 +36,8 @@
   // else the screen and controls are one centered block, so the screen gets
   // whatever height the controls leave over.
   const play = document.getElementById('play');
+  const dpad = document.getElementById('dpad');
+  const fireBtn = document.getElementById('fire');
   const sideBySide = matchMedia('(orientation: landscape) and (max-height: 520px)');
   let k = 1;
   function fit() {
@@ -47,18 +49,27 @@
       availH = stage.clientHeight - pad;
     } else {
       const cs = getComputedStyle(play);
+      // Rows under the screen: D-pad/FIRE, then the keys row.
       const controls = Math.max(document.querySelector('.pad-group').offsetHeight,
-                                document.querySelector('.btn-group').offsetHeight);
+                                document.querySelector('.btn-group').offsetHeight)
+                     + document.querySelector('.key-row').offsetHeight;
       availH = play.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-             - parseFloat(cs.rowGap) - controls - pad;
+             - 2 * parseFloat(cs.rowGap) - controls - pad;
     }
     k = Math.max(1, Math.floor(Math.min(availW / W, availH / H) * dpr));
+    sizeFire();
     screen.width = W * k;
     screen.height = H * k;
     screen.style.width = (W * k / dpr) + 'px';
     screen.style.height = (H * k / dpr) + 'px';
     ctx.imageSmoothingEnabled = false; // resizing resets context state
     paintBlank();
+  }
+  // FIRE is as wide as the D-pad's arrows reach, tip to tip (the arrow
+  // tips sit at 11% and 89% of the cross).
+  function sizeFire() {
+    const size = Math.round(dpad.offsetWidth * 0.78) + 'px';
+    fireBtn.style.width = fireBtn.style.height = size;
   }
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', () => setTimeout(fit, 100));
@@ -129,17 +140,17 @@
   // ─── Button labels per screen ────────────────
   // What each key does on each screen, from Phoenix's source (title12.asm,
   // shop12.asm, player12.asm). Keys missing from a screen fade back.
-  const MENU = { 1: 'Start', 2: 'Settings', 3: 'Contact', 4: 'Help', mode: 'Quit' };
+  const MENU = { 1: 'Start', 2: 'Settings', 3: 'Contact', 4: 'Help', clear: 'Quit' };
   const LABELS = {
     title:    MENU,
     info:     Object.assign({ 5: 'Menu' }, MENU),
-    settings: { fire: 'CHANGE', 5: 'Back', mode: 'Back' },
-    shop:     { enter: 'Buy', mode: 'Done' },
-    scores:   { 1: 'OK', 2: 'OK', 3: 'OK', 4: 'OK', 5: 'OK', enter: 'OK', mode: 'OK', fire: 'OK' },
+    settings: { fire: 'CHANGE', 5: 'Back', clear: 'Back' },
+    shop:     { enter: 'Buy', clear: 'Done' },
+    scores:   { 1: 'OK', 2: 'OK', 3: 'OK', 4: 'OK', 5: 'OK', enter: 'OK', clear: 'OK', fire: 'OK' },
     play:     { fire: 'FIRE', 1: 'Gun 1', 2: 'Gun 2', 3: 'Gun 3', 4: 'Gun 4', 5: 'Gun 5',
-                enter: 'Pause', mode: 'Save+Quit' },
+                enter: 'Pause', clear: 'Quit' },
   };
-  const KEY_NAMES = { '0x22': 1, '0x1A': 2, '0x12': 3, '0x23': 4, '0x1B': 5, '0x37': 'mode', '0x09': 'enter' };
+  const KEY_NAMES = { '0x22': 1, '0x1A': 2, '0x12': 3, '0x23': 4, '0x1B': 5, '0x0F': 'clear', '0x09': 'enter' };
   const fireLabel = document.querySelector('#fire b');
   function relabel(name) {
     const labels = LABELS[name];
@@ -149,7 +160,7 @@
       el.classList.toggle('idle', !text);
     }
     fireLabel.textContent = labels.fire || 'FIRE';
-    fireLabel.style.fontSize = fireLabel.textContent.length > 4 ? '0.9rem' : '';
+    fireLabel.style.fontSize = fireLabel.textContent.length > 4 ? '1.3rem' : '';
     document.getElementById('fire').classList.toggle('idle', !labels.fire);
   }
 
@@ -209,7 +220,9 @@
     ArrowUp: TI.up, ArrowDown: TI.down, ArrowLeft: TI.left, ArrowRight: TI.right,
     ' ': TI.second, z: TI.second, Z: TI.second, Control: TI.second, // fire = 2nd
     Enter: TI.enter, Shift: TI.alpha, a: TI.alpha, A: TI.alpha,     // pause / high scores
-    Escape: TI.mode, Backspace: TI.del,  // MODE: leave shop / save & quit; DEL: quit
+    // tihle can't pass MODE or DEL through (its key table lacks them), so
+    // CLEAR does their jobs: leave the shop or settings, quit the game.
+    Escape: TI.clear, Backspace: TI.clear,
     1: TI[1], 2: TI[2], 3: TI[3], 4: TI[4], 5: TI[5],
   };
   const keysDown = new Set();
@@ -235,7 +248,6 @@
   }
 
   // ─── D-pad: one surface, direction from thumb position ──
-  const dpad = document.getElementById('dpad');
   const arms = {
     left: dpad.querySelector('.left'), right: dpad.querySelector('.right'),
     up: dpad.querySelector('.up'), down: dpad.querySelector('.down'),
@@ -299,7 +311,7 @@
       });
     }
   }
-  holdButton(document.getElementById('fire'), TI.second);
+  holdButton(fireBtn, TI.second);
   for (const el of document.querySelectorAll('.tk')) holdButton(el, parseInt(el.dataset.key, 16));
 
   // Block Safari's double-tap zoom, pinch zoom and long-press magnifier.
@@ -339,7 +351,7 @@
           keyup = code => Module._tihle_keyup(code);
           running = true;
         },
-        // MODE or DEL mid-game exits the program and the emulator stops.
+        // CLEAR mid-game exits the program and the emulator stops.
         // Start over rather than leave a dead screen (a saved game lives
         // in emulator memory, so it doesn't survive this).
         print: t => {
