@@ -21,14 +21,14 @@ The page uses `http://<page host>:8811/api/scores` anywhere but hallie.xyz.
 
 ## Deploy (droplet)
 
-1. Porkbun: `A  scores  →  <droplet IP>` on hallie.xyz.
-2. `sudo mkdir -p /opt/phoenix-scores && sudo cp scores.py /opt/phoenix-scores/`
-3. Optional admin token: `echo PHX_ADMIN_TOKEN=… | sudo tee /etc/phoenix-scores.env`
-   (`sudo chmod 600` it).
-4. `sudo cp phoenix-scores.service /etc/systemd/system/ && sudo systemctl enable --now phoenix-scores`
-5. `sudo cp nginx.conf /etc/nginx/sites-available/scores.hallie.xyz`, symlink into
-   `sites-enabled`, `sudo nginx -t && sudo systemctl reload nginx`
-6. `sudo certbot --nginx -d scores.hallie.xyz`
+1. Porkbun: `A  scores  →  157.245.91.181` on hallie.xyz.
+2. Run `./deploy.sh`. It copies the files, installs the systemd unit and the
+   nginx site, makes `/etc/phoenix-scores.env` with an admin token once, and
+   runs certbot when the DNS points at the droplet. Safe to re-run (it keeps
+   certbot's nginx edits). Code: `/opt/phoenix-scores/`, data:
+   `/var/lib/phoenix-scores/scores.db`.
+
+Admin token: `ssh ocean cat /etc/phoenix-scores.env`.
 
 ## Moderate
 
