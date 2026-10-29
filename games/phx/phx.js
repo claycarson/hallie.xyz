@@ -244,6 +244,15 @@
       release(code);
     }
   }
+  // While a card is open (typing a name), keys must reach the text box.
+  // The emulator's SDL layer listens on the window and preventDefault()s
+  // every key, which swallows typing, so stop keys here before it sees them.
+  // This file loads before tihle, so these window listeners run first.
+  for (const type of ['keydown', 'keypress', 'keyup']) {
+    window.addEventListener(type, e => {
+      if (document.querySelector('.overlay.show')) e.stopImmediatePropagation();
+    }, true);
+  }
   window.addEventListener('keydown', e => onKey(e, true), true);
   window.addEventListener('keyup', e => onKey(e, false), true);
 
