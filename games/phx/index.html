@@ -179,13 +179,76 @@
     text-align: center;
   }
   #credits a { color: inherit; }
+
+  /* ── Scores: end-of-run card and the 🏆 board (shared .overlay/.ov-card) ── */
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  button.back-btn { cursor: pointer; }
+  .ov-card h2 { font-size: clamp(1.3rem, 5vw, 1.7rem); margin-bottom: 6px; }
+  .run-stats { color: rgba(255,255,255,0.75); margin-bottom: 18px; }
+  .name-input {
+    width: 100%;
+    max-width: 280px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.25);
+    color: #fff;
+    font-family: var(--font);
+    font-size: 1.3rem;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .name-input:focus { outline: none; border-color: var(--blue); }
+  .ov-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 16px; }
+  .link-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    font-family: var(--font);
+    font-size: 0.95rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .ov-msg { min-height: 1.4em; margin-top: 12px; color: var(--gold); }
+
+  .tabs { display: flex; gap: 6px; justify-content: center; margin: 12px 0; }
+  .tab {
+    flex: 1;
+    padding: 8px 4px;
+    border-radius: 12px;
+    border: 2px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.75);
+    font-family: var(--font);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .tab.active { background: rgba(100,200,255,0.3); border-color: var(--blue); color: #fff; }
+  .board { max-height: min(50dvh, 420px); overflow-y: auto; text-align: left; }
+  .board h3 { font-size: 0.85rem; color: rgba(255,255,255,0.55); margin: 12px 0 4px; font-weight: normal; }
+  .row {
+    display: grid;
+    grid-template-columns: 2.2em 1fr auto;
+    gap: 8px;
+    padding: 7px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 1rem;
+  }
+  .row .rank { color: var(--gold); }
+  .row .val { color: rgba(255,255,255,0.8); font-variant-numeric: tabular-nums; }
+  .row .sub { display: block; font-size: 0.7rem; color: rgba(255,255,255,0.45); }
+  .board .empty { padding: 18px 4px; text-align: center; color: rgba(255,255,255,0.5); }
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <div class="score-display">🔥 Phoenix</div>
-  <a href="../" class="back-btn">← Games</a>
+  <div class="topbar-right">
+    <button class="back-btn" id="trophy">🏆 Scores</button>
+    <a href="../" class="back-btn">← Games</a>
+  </div>
 </div>
 
 <div id="play">
@@ -235,6 +298,39 @@
       <button class="tk enter" data-key="0x09"><b>ENTER</b><small></small></button>
     </div>
     <div id="hint">Arrows move · Space fires · 1–5 weapons · Enter buys/pauses · Esc = CLEAR</div>
+  </div>
+</div>
+
+<!-- End of a run: name it, save it to the board -->
+<div class="overlay" id="run-ov">
+  <div class="ov-card">
+    <h2 id="run-title">Game over!</h2>
+    <div class="run-stats" id="run-stats"></div>
+    <form id="run-form" autocomplete="off">
+      <input class="name-input" id="run-name" maxlength="10" placeholder="YOUR NAME"
+             autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+      <div class="ov-actions">
+        <button class="h-btn h-btn-green" type="submit">Save my score</button>
+        <button class="link-btn" type="button" id="run-skip">No thanks</button>
+      </div>
+    </form>
+    <div class="ov-msg" id="run-msg"></div>
+  </div>
+</div>
+
+<!-- 🏆 Leaderboard -->
+<div class="overlay" id="board-ov">
+  <div class="ov-card">
+    <h2>🏆 High Scores</h2>
+    <div class="tabs">
+      <button class="tab active" data-tab="champions">Champions</button>
+      <button class="tab" data-tab="furthest">Furthest</button>
+      <button class="tab" data-tab="mine">Mine</button>
+    </div>
+    <div class="board" id="board-list"></div>
+    <div class="ov-actions">
+      <button class="link-btn" type="button" id="board-close">Close</button>
+    </div>
   </div>
 </div>
 

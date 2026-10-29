@@ -1,0 +1,21 @@
+# /etc/systemd/system/phoenix-scores.service
+[Unit]
+Description=Phoenix leaderboard API (scores.hallie.xyz)
+After=network.target
+
+[Service]
+DynamicUser=yes
+StateDirectory=phoenix-scores
+Environment=PHX_DB=/var/lib/phoenix-scores/scores.db
+Environment=PHX_PORT=8811
+Environment=PHX_ORIGINS=https://hallie.xyz,https://www.hallie.xyz
+EnvironmentFile=-/etc/phoenix-scores.env
+ExecStart=/usr/bin/python3 -I /opt/phoenix-scores/scores.py
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

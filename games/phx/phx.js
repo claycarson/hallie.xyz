@@ -105,6 +105,8 @@
     'bef687e8': 'info',       // "Arrows Move Ship" (instructions)
     '8ea4fea5': 'shop',       // "Phx Shop -"
     '894c7626': 'scores',     // high score table
+    'a579dd33': 'prompt',     // " Enter your name" over the table
+    '47430a9d': 'scoring',    // finished-game tally ("Shields", "Speed" …)
   };
   const SCREENS_FULL = {
     '7a699bbe:52858fa': 'title',
@@ -147,6 +149,8 @@
     settings: { fire: 'CHANGE', 5: 'Back', clear: 'Back' },
     shop:     { enter: 'Buy', clear: 'Done' },
     scores:   { 1: 'OK', 2: 'OK', 3: 'OK', 4: 'OK', 5: 'OK', enter: 'OK', clear: 'OK', fire: 'OK' },
+    scoring:  { enter: 'OK' },
+    prompt:   { enter: 'OK' },
     play:     { fire: 'FIRE', 1: 'Gun 1', 2: 'Gun 2', 3: 'Gun 3', 4: 'Gun 4', 5: 'Gun 5',
                 enter: 'Pause', clear: 'Quit' },
   };
@@ -227,6 +231,7 @@
   };
   const keysDown = new Set();
   function onKey(e, down) {
+    if (document.querySelector('.overlay.show')) return; // typing a name
     const code = KEYMAP[e.key];
     if (code === undefined) return;
     e.preventDefault();
@@ -316,7 +321,7 @@
 
   // Block Safari's double-tap zoom, pinch zoom and long-press magnifier.
   document.addEventListener('touchstart', e => {
-    if (!e.target.closest('a')) e.preventDefault();
+    if (!e.target.closest('a, .overlay')) e.preventDefault();
   }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('contextmenu', e => e.preventDefault());
@@ -330,6 +335,293 @@
     releaseAll();
   });
 
+  // ─── Emulator memory ─────────────────────────
+  // tihle keeps calculator RAM ($8000–$FFFF) as one flat array inside the
+  // WebAssembly heap. Find it through Phoenix's built-in high score table
+  // ("Patrick D ", 0, 30000). Phoenix is assembled at $9D93 (its $BB $6D
+  // header), so the table's address is fixed: measure it in the 8XP file
+  // (layoutFrom). The heap also holds a copy of the 8XP file itself; skip
+  // the hit with the file header ("PHOENIX") just before the program start.
+  // Variable offsets from the table come from Phoenix's vars.asm.
+  let ramBase = -1, T = 0, tableFromStart = 0;
+  const heap = () => Module.HEAPU8;
+  const read8 = a => heap()[ramBase + a - 0x8000];
+  const read16 = a => read8(a) | read8(a + 1) << 8;
+  const write8 = (a, v) => { heap()[ramBase + a - 0x8000] = v; };
+  const V = {
+    level: () => T - 571, cash: () => T - 569, completed: () => T - 547,
+    difficulty: () => T - 1,
+    saveStart: () => T - 5,       // invert, speed, scroll, sides, difficulty
+    saveEnd: () => T + 7 * 13,    // + the 7-entry table (10-char name, 0, score)
+  };
+  const BONUS_SCORE = 0x8852;     // TEXT_MEM+102: the finished-game total
+  const SIG = [...'Patrick D '].map(c => c.charCodeAt(0)).concat([0, 0x30, 0x75]);
+  const PHOENIX = [...'PHOENIX'].map(c => c.charCodeAt(0));
+
+  function hasAt(h, at, bytes) {
+    for (let j = 0; j < bytes.length; j++) if (h[at + j] !== bytes[j]) return false;
+    return true;
+  }
+  function indexOfBytes(h, bytes, from = 0) {
+    for (let o = h.indexOf(bytes[0], from); o !== -1; o = h.indexOf(bytes[0], o + 1)) {
+      if (hasAt(h, o, bytes)) return o;
+    }
+    return -1;
+  }
+  function layoutFrom(file) {
+    const start = indexOfBytes(file, [0xBB, 0x6D]);
+    const table = indexOfBytes(file, SIG);
+    if (start < 0 || table < 0) return false;
+    tableFromStart = table - start;
+    T = 0x9D93 + tableFromStart;
+    return true;
+  }
+  function findRam() {
+    if (!T) return false;
+    const h = heap();
+    for (let o = indexOfBytes(h, SIG); o !== -1; o = indexOfBytes(h, SIG, o + 1)) {
+      const start = o - tableFromStart;
+      let isFile = false;
+      for (let i = start - 20; i < start; i++) if (hasAt(h, i, PHOENIX)) isFile = true;
+      if (isFile) continue;
+      ramBase = o - (T - 0x8000);
+      return true;
+    }
+    return false;
+  }
+
+  // ─── This device's table and settings ────────
+  // Phoenix's own High Scores table and Settings live in its program memory,
+  // which a reload wipes. Keep a copy in the browser and put it back on boot.
+  const SAVE_KEY = 'phx.save.v1', NAME_KEY = 'phx.name', MINE_KEY = 'phx.mine.v1';
+  const store = {
+    get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch (_) { return fallback; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} },
+  };
+  let savedJson = null;
+  function snapshot() {
+    const out = [];
+    for (let a = V.saveStart(); a < V.saveEnd(); a++) out.push(read8(a));
+    return out;
+  }
+  function restoreSave() {
+    const saved = store.get(SAVE_KEY, null);
+    if (!Array.isArray(saved) || saved.length !== V.saveEnd() - V.saveStart()) return;
+    saved.forEach((v, i) => write8(V.saveStart() + i, v & 0xFF));
+    savedJson = JSON.stringify(saved);
+  }
+  function persist() {
+    const json = JSON.stringify(snapshot());
+    if (json !== savedJson) { savedJson = json; store.set(SAVE_KEY, JSON.parse(json)); }
+  }
+  function phoenixTable() {
+    const rows = [];
+    for (let i = 0; i < 7; i++) {
+      const at = T + i * 13;
+      let name = '';
+      for (let j = 0; j < 10; j++) name += String.fromCharCode(read8(at + j));
+      rows.push({ name: name.trim() || '—', score: read16(at + 11) });
+    }
+    return rows;
+  }
+
+  // ─── Runs ────────────────────────────────────
+  // A run starts when play begins at level 1+, and ends on the high score
+  // screens (Phoenix shows them after a death and after finishing). Finished
+  // games pass through the tally screen first; their score is bonus_score.
+  let run = null, runState = 'idle';
+  function trackRun() {
+    const level = read8(V.level());
+    if (runState === 'idle') {
+      if (screenName === 'play' && level >= 1) {
+        run = { level, cash: read16(V.cash()), difficulty: read8(V.difficulty()), finished: false };
+        runState = 'running';
+      }
+      return;
+    }
+    if (runState === 'running') {
+      if (screenName === 'play') {
+        if (level < run.level) { runState = 'idle'; return; } // a new game began
+        run.level = level;
+        run.cash = read16(V.cash());
+      }
+      if (screenName === 'scoring') run.finished = true;
+      if (screenName === 'scores' || screenName === 'prompt') {
+        if (run.finished) run.score = read16(BONUS_SCORE);
+        runState = 'ended';
+        endRun(run);
+      }
+      return;
+    }
+    // ended: wait for the title or a fresh game
+    if (screenName === 'title' || level === 0 || (screenName === 'play' && level < run.level)) runState = 'idle';
+  }
+
+  // ─── End-of-run card ─────────────────────────
+  const SCORES_API = location.hostname.endsWith('hallie.xyz')
+    ? 'https://scores.hallie.xyz/api/scores'
+    : `http://${location.hostname}:8811/api/scores`; // local testing
+  const DIFFICULTY = ['Easy', 'Medium', 'Hard'];
+  const runOv = document.getElementById('run-ov');
+  const runName = document.getElementById('run-name');
+  const runMsg = document.getElementById('run-msg');
+  let ending = null;
+
+  const cleanName = raw => String(raw || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
+
+  function endRun(r) {
+    ending = r;
+    document.getElementById('run-title').textContent = r.finished ? 'You beat Phoenix! 🎉' : 'Game over!';
+    document.getElementById('run-stats').textContent =
+      `Level ${r.level} · $${r.cash}` + (r.finished ? ` · Score ${r.score}` : '') + ` · ${DIFFICULTY[r.difficulty] || ''}`;
+    runName.value = store.get(NAME_KEY, '');
+    runMsg.textContent = '';
+    keysDown.clear(); setDir(new Set()); releaseAll();
+    runOv.classList.add('show');
+  }
+
+  function keepLocally(r, name) {
+    const mine = store.get(MINE_KEY, []);
+    mine.push({ name, level: r.level, cash: r.cash, difficulty: r.difficulty,
+                score: r.finished ? r.score : null, date: new Date().toISOString().slice(0, 10) });
+    store.set(MINE_KEY, mine.slice(-50));
+  }
+
+  // If Phoenix itself is asking for a name (a finished game that made its
+  // table), write it straight into the blank entry and press ENTER: tihle
+  // can't type most of the letter keys Phoenix's name entry uses.
+  function answerPrompt(name) {
+    if (screenName !== 'prompt') return;
+    for (let i = 0; i < 7; i++) {
+      const at = T + i * 13;
+      let blank = true;
+      for (let j = 0; j < 10; j++) if (read8(at + j) !== 0x20) blank = false;
+      if (!blank) continue;
+      const padded = name.padEnd(10, ' ');
+      for (let j = 0; j < 10; j++) write8(at + j, padded.charCodeAt(j));
+      break;
+    }
+    press(TI.enter); release(TI.enter);
+  }
+
+  function closeRun(name) {
+    answerPrompt(name || 'PLAYER');
+    runOv.classList.remove('show');
+    ending = null;
+  }
+
+  document.getElementById('run-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!ending) return;
+    const name = cleanName(runName.value);
+    if (!name) { runMsg.textContent = 'Type your name first!'; return; }
+    store.set(NAME_KEY, name);
+    const r = ending;
+    keepLocally(r, name);
+    runMsg.textContent = 'Saving…';
+    try {
+      const res = await fetch(SCORES_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, level: r.level, cash: r.cash, difficulty: r.difficulty,
+                               score: r.finished ? r.score : null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 400 && body.error === 'name') {
+        runMsg.textContent = 'Try a different name.';
+        return;
+      }
+      if (!res.ok) throw new Error(res.status);
+      const best = Math.min(...Object.values(body.ranks || {}).filter(Boolean));
+      runMsg.textContent = Number.isFinite(best) ? `You're #${best} on the big board! 🏆` : 'Saved! 🌟';
+    } catch (_) {
+      runMsg.textContent = 'Saved on this device. The big board is taking a nap.';
+    }
+    setTimeout(() => closeRun(name), 1600);
+  });
+  document.getElementById('run-skip').addEventListener('click', () => {
+    if (!ending) return;
+    keepLocally(ending, cleanName(runName.value) || store.get(NAME_KEY, '') || 'PLAYER');
+    closeRun(cleanName(runName.value) || store.get(NAME_KEY, ''));
+  });
+
+  // ─── 🏆 Board ────────────────────────────────
+  const boardOv = document.getElementById('board-ov');
+  const boardList = document.getElementById('board-list');
+  let boardData = null, boardTab = 'champions';
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function row(rank, name, val, sub) {
+    const r = el('div', 'row');
+    r.append(el('span', 'rank', rank), el('span', 'name', name));
+    const v = el('span', 'val', val);
+    if (sub) v.append(el('span', 'sub', sub));
+    r.append(v);
+    return r;
+  }
+  const furthestVal = e => [`Level ${e.level}`, `$${e.cash} · ${DIFFICULTY[e.difficulty] || ''}`];
+
+  function renderBoard() {
+    boardList.replaceChildren();
+    for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.tab === boardTab);
+    if (boardTab === 'mine') {
+      boardList.append(el('h3', '', 'This calculator’s table'));
+      if (ramBase >= 0) phoenixTable().forEach((e, i) => boardList.append(row(i + 1, e.name, String(e.score))));
+      boardList.append(el('h3', '', 'Your best runs'));
+      const mine = store.get(MINE_KEY, [])
+        .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.level - a.level || b.cash - a.cash)
+        .slice(0, 10);
+      if (!mine.length) boardList.append(el('div', 'empty', 'No runs yet. Go fly! 🚀'));
+      mine.forEach((e, i) => boardList.append(e.score !== null
+        ? row(i + 1, e.name, String(e.score), `Level ${e.level} · finished`)
+        : row(i + 1, e.name, ...furthestVal(e))));
+      return;
+    }
+    if (!boardData) { boardList.append(el('div', 'empty', boardData === null ? 'Loading…' : '')); return; }
+    if (boardData.error) { boardList.append(el('div', 'empty', 'The big board is taking a nap. Try later!')); return; }
+    const list = boardData[boardTab] || [];
+    if (!list.length) boardList.append(el('div', 'empty', boardTab === 'champions'
+      ? 'Nobody has beaten Phoenix yet. Will you be first?' : 'No scores yet. Be the first!'));
+    list.forEach((e, i) => boardList.append(boardTab === 'champions'
+      ? row(i + 1, e.name, String(e.score), `Level ${e.level} · ${DIFFICULTY[e.difficulty] || ''}`)
+      : row(i + 1, e.name, ...furthestVal(e))));
+  }
+  async function openBoard() {
+    boardData = null;
+    renderBoard();
+    boardOv.classList.add('show');
+    try {
+      const res = await fetch(SCORES_API);
+      if (!res.ok) throw new Error(res.status);
+      boardData = await res.json();
+    } catch (_) {
+      boardData = { error: true };
+    }
+    renderBoard();
+  }
+  document.getElementById('trophy').addEventListener('click', openBoard);
+  document.getElementById('board-close').addEventListener('click', () => boardOv.classList.remove('show'));
+  boardOv.addEventListener('click', e => { if (e.target === boardOv) boardOv.classList.remove('show'); });
+  for (const t of document.querySelectorAll('.tab')) {
+    t.addEventListener('click', () => { boardTab = t.dataset.tab; renderBoard(); });
+  }
+
+  // Find RAM once the program is loaded, restore the save, then watch.
+  function startScores() {
+    const timer = setInterval(() => {
+      if (!running || !findRam()) return;
+      clearInterval(timer);
+      restoreSave();
+      setInterval(persist, 1000);
+      setInterval(trackRun, 250);
+    }, 500);
+  }
+
   // ─── Boot ────────────────────────────────────
   // Fetch the program first, then start the emulator with it written into its
   // in-memory filesystem and passed as the program to run.
@@ -339,6 +631,7 @@
   fetch(PROGRAM)
     .then(r => { if (!r.ok) throw new Error(`${PROGRAM}: ${r.status}`); return r.arrayBuffer(); })
     .then(buf => {
+      layoutFrom(new Uint8Array(buf));
       window.Module = {
         arguments: ['/phoenix.8xp'],
         canvas: emu,
@@ -350,6 +643,7 @@
           keydown = code => Module._tihle_keydown(code);
           keyup = code => Module._tihle_keyup(code);
           running = true;
+          startScores();
         },
         // CLEAR mid-game exits the program and the emulator stops.
         // Start over rather than leave a dead screen (a saved game lives
