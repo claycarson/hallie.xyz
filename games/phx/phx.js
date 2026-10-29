@@ -515,9 +515,25 @@
 
   function closeRun(name) {
     answerPrompt(name || 'PLAYER');
+    runName.blur();
     runOv.classList.remove('show');
     ending = null;
+    pinTop();
   }
+
+  // iOS scrolls the page up to keep the name box above the keyboard and
+  // leaves it there when the keyboard closes; this page blocks touch
+  // scrolling, so it would stay stuck. Snap back whenever nobody's typing.
+  const typing = () => document.activeElement && document.activeElement.tagName === 'INPUT';
+  function pinTop() {
+    if (typing()) return;
+    window.scrollTo(0, 0);
+    // again after the keyboard's closing animation settles the viewport
+    setTimeout(() => { if (!typing()) window.scrollTo(0, 0); }, 350);
+  }
+  runName.addEventListener('blur', pinTop);
+  window.addEventListener('scroll', () => { if (!typing() && window.scrollY) window.scrollTo(0, 0); });
+  if (window.visualViewport) visualViewport.addEventListener('resize', pinTop);
 
   document.getElementById('run-form').addEventListener('submit', async e => {
     e.preventDefault();
