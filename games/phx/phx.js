@@ -679,6 +679,10 @@
         },
         printErr: t => console.warn('[tihle]', t),
       };
+      // SDL renames the window to "tihle" once it starts, which Emscripten
+      // turns into document.title. Keep the page's own title.
+      const title = document.title;
+      Object.defineProperty(document, 'title', { get: () => title, set() {} });
       const s = document.createElement('script');
       s.src = 'emu/tihle.js';
       document.body.appendChild(s);
