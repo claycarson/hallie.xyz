@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Public leaderboard for Phoenix on hallie.xyz (games/phx), served at
+"""Public leaderboard for Phoenix on hallie.xyz (games/phoenix), served at
 https://scores.hallie.xyz from the droplet (hallie.xyz itself is GitHub Pages,
 which can't run this). Lives in _server/ so Jekyll leaves it off the site.
 

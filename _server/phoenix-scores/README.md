@@ -1,6 +1,6 @@
 # phoenix-scores
 
-Public leaderboard API for `games/phx`, at `https://scores.hallie.xyz/api/scores`.
+Public leaderboard API for `games/phoenix`, at `https://scores.hallie.xyz/api/scores`.
 hallie.xyz is GitHub Pages (static only), so this runs on the droplet. The `_`
 folder name keeps it off the Pages site (Jekyll skips `_` folders).
 

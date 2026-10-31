@@ -119,7 +119,7 @@
   }
   /* As big as the D-pad: it's the button you hold the whole game */
   #fire {
-    flex-shrink: 0; /* width/height set by phx.js: the D-pad's arrow span */
+    flex-shrink: 0; /* width/height set by phoenix.js: the D-pad's arrow span */
     background: var(--red);
     box-shadow: 0 6px 0 #b33d3d;
     font-size: 1.8rem;
@@ -127,7 +127,7 @@
   #fire.on { transform: translateY(5px); box-shadow: 0 1px 0 #b33d3d; }
   /* TI keys the game uses: 1–5 menus and weapons, ENTER buys/pauses, CLEAR leaves the shop/settings and quits */
   /* Extra room above the keys so a thumb on the D-pad or FIRE doesn't
-     brush them (padding, not margin, so phx.js's height math includes it) */
+     brush them (padding, not margin, so phoenix.js's height math includes it) */
   .key-row { grid-area: keys; display: flex; flex-direction: column; gap: 8px; padding-top: 20px; }
   @media (max-height: 600px) { #play .key-row { padding-top: 0; } } /* short phones need the room for the screen */
   .keys {
@@ -339,9 +339,9 @@
   <a href="https://gitlab.com/taricorp/tihle">tihle</a> emulator (<a href="emu/COPYING">GPL-3.0</a>)
 </div>
 
-<!-- The emulator draws here (offscreen); phx.js recolors it and copies it to #screen -->
+<!-- The emulator draws here (offscreen); phoenix.js recolors it and copies it to #screen -->
 <canvas id="canvas" width="384" height="256"></canvas>
 
-<script src="phx.js"></script>
+<script src="phoenix.js"></script>
 </body>
 </html>
