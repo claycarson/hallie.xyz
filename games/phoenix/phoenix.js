@@ -329,8 +329,10 @@
   for (const el of document.querySelectorAll('.tk')) holdButton(el, parseInt(el.dataset.key, 16));
 
   // Block Safari's double-tap zoom, pinch zoom and long-press magnifier.
+  // Not on the top bar: a cancelled touchstart never becomes a click, and
+  // its buttons (Shield, Scores) work by click.
   document.addEventListener('touchstart', e => {
-    if (!e.target.closest('a, .overlay')) e.preventDefault();
+    if (!e.target.closest('a, .overlay, .topbar')) e.preventDefault();
   }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('contextmenu', e => e.preventDefault());
