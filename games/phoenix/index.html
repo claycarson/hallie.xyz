@@ -183,6 +183,8 @@
   /* ── Scores: end-of-run card and the 🏆 board (shared .overlay/.ov-card) ── */
   .topbar-right { display: flex; gap: 8px; align-items: center; }
   button.back-btn { cursor: pointer; }
+  #shield-btn.on { background: rgba(76,255,140,0.3); border-color: var(--green); }
+  #shield-btn[hidden] { display: none; }
   .ov-card h2 { font-size: clamp(1.3rem, 5vw, 1.7rem); margin-bottom: 6px; }
   .run-stats { color: rgba(255,255,255,0.75); margin-bottom: 18px; }
   .name-input {
@@ -246,6 +248,7 @@
 <div class="topbar">
   <div class="score-display">🔥 Phoenix</div>
   <div class="topbar-right">
+    <button class="back-btn" id="shield-btn" hidden>🛡️ Shield: Off</button>
     <button class="back-btn" id="trophy">🏆 Scores</button>
     <a href="../" class="back-btn">← Games</a>
   </div>

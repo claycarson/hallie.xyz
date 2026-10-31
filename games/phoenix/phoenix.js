@@ -136,7 +136,7 @@
     lastPrint = print;
     window.__phxPrint = print; // for capturing new fingerprints in devtools
     const name = SCREENS_FULL[print] || SCREENS_TOP[print.split(':')[0]] || 'play';
-    if (name !== screenName) { screenName = name; relabel(name); }
+    if (name !== screenName) { screenName = name; relabel(name); shieldBtn.hidden = name !== 'title'; }
   }
 
   // ─── Button labels per screen ────────────────
@@ -352,7 +352,7 @@
   // (layoutFrom). The heap also holds a copy of the 8XP file itself; skip
   // the hit with the file header ("PHOENIX") just before the program start.
   // Variable offsets from the table come from Phoenix's vars.asm.
-  let ramBase = -1, T = 0, tableFromStart = 0;
+  let ramBase = -1, T = 0, tableFromStart = 0, damageAt = 0;
   const heap = () => Module.HEAPU8;
   const read8 = a => heap()[ramBase + a - 0x8000];
   const read16 = a => read8(a) | read8(a + 1) << 8;
@@ -366,6 +366,7 @@
   const BONUS_SCORE = 0x8852;     // TEXT_MEM+102: the finished-game total
   const SIG = [...'Patrick D '].map(c => c.charCodeAt(0)).concat([0, 0x30, 0x75]);
   const PHOENIX = [...'PHOENIX'].map(c => c.charCodeAt(0));
+  const SUB_E = 0x93, NOP = 0x00;
 
   function hasAt(h, at, bytes) {
     for (let j = 0; j < bytes.length; j++) if (h[at + j] !== bytes[j]) return false;
@@ -383,6 +384,11 @@
     if (start < 0 || table < 0) return false;
     tableFromStart = table - start;
     T = 0x9D93 + tableFromStart;
+    // hityou.asm: ld a,(player_pwr) / sub e / ld (player_pwr),a / jr c,game_lose
+    // (player_pwr = T-570). The sub e byte is where a hit costs shield.
+    const pwr = [(T - 570) & 0xFF, (T - 570) >> 8];
+    const hit = indexOfBytes(file, [0x3A, ...pwr, SUB_E, 0x32, ...pwr, 0x38]);
+    if (hit >= 0) damageAt = 0x9D93 + (hit + 3 - start);
     return true;
   }
   function findRam() {
@@ -407,6 +413,27 @@
     get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch (_) { return fallback; } },
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} },
   };
+  // ─── 🛡️ Super Shield ─────────────────────────
+  // Swaps the sub e that takes shield away for a nop in Phoenix's running
+  // code, so hits cost nothing. Only offered on the title screen, so a game
+  // is either all shielded or not. Shielded runs stay off the big board.
+  const SHIELD_KEY = 'phoenix.shield';
+  const shieldBtn = document.getElementById('shield-btn');
+  let shieldOn = store.get(SHIELD_KEY, false) === true;
+  function applyShield() {
+    shieldBtn.textContent = `🛡️ Shield: ${shieldOn ? 'On' : 'Off'}`;
+    shieldBtn.classList.toggle('on', shieldOn);
+    if (ramBase < 0 || !damageAt) return;
+    const b = read8(damageAt);
+    if (b === SUB_E || b === NOP) write8(damageAt, shieldOn ? NOP : SUB_E);
+  }
+  shieldBtn.addEventListener('click', () => {
+    shieldOn = !shieldOn;
+    store.set(SHIELD_KEY, shieldOn);
+    applyShield();
+  });
+  applyShield();
+
   let savedJson = null;
   function snapshot() {
     const out = [];
@@ -443,7 +470,7 @@
     const level = read8(V.level());
     if (runState === 'idle') {
       if (screenName === 'play' && level >= 1) {
-        run = { level, cash: read16(V.cash()), difficulty: read8(V.difficulty()), finished: false };
+        run = { level, cash: read16(V.cash()), difficulty: read8(V.difficulty()), finished: false, shield: shieldOn };
         runState = 'running';
       }
       return;
@@ -482,7 +509,8 @@
     ending = r;
     document.getElementById('run-title').textContent = r.finished ? 'You beat Phoenix! 🎉' : 'Game over!';
     document.getElementById('run-stats').textContent =
-      `Level ${r.level} · $${r.cash}` + (r.finished ? ` · Score ${r.score}` : '') + ` · ${DIFFICULTY[r.difficulty] || ''}`;
+      `Level ${r.level} · $${r.cash}` + (r.finished ? ` · Score ${r.score}` : '') + ` · ${DIFFICULTY[r.difficulty] || ''}` +
+      (r.shield ? ' · 🛡️' : '');
     runName.value = store.get(NAME_KEY, '');
     runMsg.textContent = '';
     keysDown.clear(); setDir(new Set()); releaseAll();
@@ -491,7 +519,7 @@
 
   function keepLocally(r, name) {
     const mine = store.get(MINE_KEY, []);
-    mine.push({ name, level: r.level, cash: r.cash, difficulty: r.difficulty,
+    mine.push({ name, level: r.level, cash: r.cash, difficulty: r.difficulty, shield: r.shield || undefined,
                 score: r.finished ? r.score : null, date: new Date().toISOString().slice(0, 10) });
     store.set(MINE_KEY, mine.slice(-50));
   }
@@ -543,6 +571,11 @@
     store.set(NAME_KEY, name);
     const r = ending;
     keepLocally(r, name);
+    if (r.shield) {
+      runMsg.textContent = 'Saved on this device! 🛡️';
+      setTimeout(() => closeRun(name), 1600);
+      return;
+    }
     runMsg.textContent = 'Saving…';
     try {
       const res = await fetch(SCORES_API, {
@@ -603,8 +636,8 @@
         .slice(0, 10);
       if (!mine.length) boardList.append(el('div', 'empty', 'No runs yet. Go fly! 🚀'));
       mine.forEach((e, i) => boardList.append(e.score !== null
-        ? row(i + 1, e.name, String(e.score), `Level ${e.level} · finished`)
-        : row(i + 1, e.name, ...furthestVal(e))));
+        ? row(i + 1, e.name + (e.shield ? ' 🛡️' : ''), String(e.score), `Level ${e.level} · finished`)
+        : row(i + 1, e.name + (e.shield ? ' 🛡️' : ''), ...furthestVal(e))));
       return;
     }
     if (!boardData) { boardList.append(el('div', 'empty', boardData === null ? 'Loading…' : '')); return; }
@@ -642,6 +675,7 @@
       if (!running || !findRam()) return;
       clearInterval(timer);
       restoreSave();
+      applyShield();
       setInterval(persist, 1000);
       setInterval(trackRun, 250);
     }, 500);
