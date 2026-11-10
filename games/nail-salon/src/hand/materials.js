@@ -100,12 +100,13 @@ export function makeNailMaterial(uniforms) {
         metalnessmap_fragment: /* glsl */`
           float nlRough = mix(0.38, nlM.g, nlFilm);
           nlRough = mix(nlRough, 0.06, nlWet * 0.5 * nlFilm);
+          nlRough = mix(nlRough, 0.04, nlDt.b * nlFilm);               // sparkle flakes are little mirrors
           roughnessFactor = nlRough;
           metalnessFactor = nlM.b * nlFilm;`,
         normal_fragment_maps: /* glsl */`
           {
             float ridge = (1.0 - nlFilm) * 0.012 * cos(nlP.x * 120.0 + 6.0 * nlNoise(vec2(nlP.x * 14.0, nlP.y * 0.7))) * nlNoise(vec2(nlP.x * 25.0, 3.0));
-            vec2 flake = (nlDt.rg - 0.5) * 2.0 * nlFilm;
+            vec2 flake = (nlDt.rg - 0.5) * 1.6 * nlFilm;
             normal = nlTilt(normal, -vViewPosition, nlP, vec2(ridge, 0.0) + flake);
           }`,
         lights_physical_fragment: /* glsl */`

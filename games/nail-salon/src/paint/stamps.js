@@ -94,9 +94,20 @@ export class StampRenderer {
       { uniforms: { uMat: this.uMat }, src: THREE.SrcAlphaFactor, dst: THREE.OneMinusSrcAlphaFactor, srcA: THREE.ConstantAlphaFactor, dstA: THREE.OneMinusSrcAlphaFactor });
 
     // Detail: flake offsets and sparkle lerp by stamp alpha; wetness adds up and clamps at 1.
+    this.uFlake = { value: new THREE.Vector3() };
     this.detail = stampMaterial(shared, /* glsl */`
-      void main() { float sd; float a = min(1.0, footprint(sd) * vParams.y * 2.5); gl_FragColor = vec4(0.5, 0.5, 0.0, a); }`,
-      { src: THREE.SrcAlphaFactor, dst: THREE.OneMinusSrcAlphaFactor, srcA: THREE.OneFactor, dstA: THREE.OneFactor });
+      uniform vec3 uFlake;      // cells per nail width, tilt, share that sparkle
+      void main() {
+        float sd; float a = min(1.0, footprint(sd) * vParams.y * 2.5);
+        // Flakes are fixed in the nail's own space, so going over a spot never reshuffles them.
+        vec2 g = vP * uFlake.x, cell = floor(g);
+        vec2 local = fract(g) - 0.5 - (vec2(hash(cell + 3.1), hash(cell + 9.7)) - 0.5) * 0.4;
+        float disc = (1.0 - smoothstep(0.26, 0.36, length(local))) * step(0.5, uFlake.x);   // round flakes
+        vec2 tilt = (vec2(hash(cell), hash(cell + 17.3)) - 0.5) * uFlake.y * disc;
+        float sparkle = step(1.0 - uFlake.z, hash(cell + 41.7)) * disc;
+        gl_FragColor = vec4(0.5 + tilt, sparkle, a);
+      }`,
+      { uniforms: { uFlake: this.uFlake }, src: THREE.SrcAlphaFactor, dst: THREE.OneMinusSrcAlphaFactor, srcA: THREE.OneFactor, dstA: THREE.OneFactor });
 
     // Id: which finish is on top. Hard-edged, no blending.
     this.id = stampMaterial(shared, /* glsl */`
@@ -113,6 +124,7 @@ export class StampRenderer {
     this.uColor.value.copy(color);
     this.uMat.value.set(finish.translucency, finish.roughness, finish.metalness);
     this.material.blendAlpha = finish.iridescence;
+    this.uFlake.value.fromArray(finish.flake || [0, 0, 0]);
     this.uId.value = finish.id / 255;
   }
 

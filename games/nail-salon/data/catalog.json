@@ -1,13 +1,127 @@
 {
   "finishes": {
-    "cream": { "id": 1, "translucency": 0, "roughness": 0.25, "metalness": 0, "iridescence": 0 }
+    "cream": {
+      "id": 1,
+      "translucency": 0,
+      "roughness": 0.25,
+      "metalness": 0,
+      "iridescence": 0,
+      "flake": [
+        0,
+        0,
+        0
+      ]
+    },
+    "shimmer": {
+      "id": 2,
+      "translucency": 0,
+      "roughness": 0.28,
+      "metalness": 0.4,
+      "iridescence": 0,
+      "flake": [
+        150,
+        0.35,
+        0.06
+      ]
+    },
+    "glitter": {
+      "id": 3,
+      "translucency": 0,
+      "roughness": 0.15,
+      "metalness": 0.8,
+      "iridescence": 0,
+      "flake": [
+        42,
+        1.0,
+        0.22
+      ]
+    },
+    "chrome": {
+      "id": 4,
+      "translucency": 0,
+      "roughness": 0.05,
+      "metalness": 1,
+      "iridescence": 0,
+      "flake": [
+        0,
+        0,
+        0
+      ]
+    },
+    "holo": {
+      "id": 5,
+      "translucency": 0,
+      "roughness": 0.18,
+      "metalness": 0.7,
+      "iridescence": 1,
+      "flake": [
+        110,
+        0.3,
+        0.1
+      ]
+    }
   },
   "polishes": [
-    { "id": "cream-red", "name": "Red", "color": "#c8102e", "finish": "cream" },
-    { "id": "cream-rose", "name": "Rose", "color": "#d77a8c", "finish": "cream" },
-    { "id": "cream-pink", "name": "Pink", "color": "#ff3fa8", "finish": "cream" },
-    { "id": "cream-lilac", "name": "Lilac", "color": "#c9b3ff", "finish": "cream" },
-    { "id": "cream-white", "name": "White", "color": "#f7f3ee", "finish": "cream" },
-    { "id": "cream-black", "name": "Black", "color": "#1c1a1f", "finish": "cream" }
-  ]
+    {
+      "id": "cream-red",
+      "name": "Red",
+      "color": "#c8102e",
+      "finish": "cream"
+    },
+    {
+      "id": "cream-rose",
+      "name": "Rose",
+      "color": "#d77a8c",
+      "finish": "cream"
+    },
+    {
+      "id": "cream-pink",
+      "name": "Pink",
+      "color": "#ff3fa8",
+      "finish": "cream"
+    },
+    {
+      "id": "cream-lilac",
+      "name": "Lilac",
+      "color": "#c9b3ff",
+      "finish": "cream"
+    },
+    {
+      "id": "cream-white",
+      "name": "White",
+      "color": "#f7f3ee",
+      "finish": "cream"
+    },
+    {
+      "id": "cream-black",
+      "name": "Black",
+      "color": "#1c1a1f",
+      "finish": "cream"
+    },
+    {
+      "id": "shimmer-pink",
+      "name": "Pink Shimmer",
+      "color": "#ff7ab8",
+      "finish": "shimmer"
+    },
+    {
+      "id": "glitter-gold",
+      "name": "Gold Glitter",
+      "color": "#e8c36a",
+      "finish": "glitter"
+    },
+    {
+      "id": "chrome-silver",
+      "name": "Silver Chrome",
+      "color": "#e8e8f0",
+      "finish": "chrome"
+    },
+    {
+      "id": "holo-lilac",
+      "name": "Lilac Holo",
+      "color": "#c9b3ff",
+      "finish": "holo"
+    }
+  ],
+  "finishNote": "flake = [cells per nail width, normal tilt 0-1, share of cells that sparkle]"
 }

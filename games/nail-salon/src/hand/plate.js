@@ -36,13 +36,24 @@ export class SkinHeight {
     for (let i = 0; i < nx; i++) if (!this.valid[i]) this.z[i] = -0.6;
   }
 
-  /** Bilinear height at paint coords (x, y), in nail widths. */
+  /** Height at paint coords (x, y), in nail widths. Catmull-Rom, so slopes are continuous
+   *  (bilinear made a mirror finish show the grid). */
   at(x, y) {
-    const r = this.rect, nx = this.nx, ny = this.ny;
-    const fx = Math.min(nx - 1.001, Math.max(0, (x - r.x0) / r.w * (nx - 1)));
-    const fy = Math.min(ny - 1.001, Math.max(0, (y - r.y0) / r.h * (ny - 1)));
-    const i = fx | 0, j = fy | 0, u = fx - i, v = fy - j, k = j * nx + i, z = this.z;
-    return (z[k] * (1 - u) + z[k + 1] * u) * (1 - v) + (z[k + nx] * (1 - u) + z[k + nx + 1] * u) * v;
+    const r = this.rect, nx = this.nx, ny = this.ny, z = this.z;
+    const fx = Math.min(nx - 1, Math.max(0, (x - r.x0) / r.w * (nx - 1)));
+    const fy = Math.min(ny - 1, Math.max(0, (y - r.y0) / r.h * (ny - 1)));
+    const i = Math.min(nx - 2, fx | 0), j = Math.min(ny - 2, fy | 0), u = fx - i, v = fy - j;
+    const u2 = u * u, u3 = u2 * u, v2 = v * v, v3 = v2 * v;
+    const wu0 = -0.5 * u3 + u2 - 0.5 * u, wu1 = 1.5 * u3 - 2.5 * u2 + 1, wu2 = -1.5 * u3 + 2 * u2 + 0.5 * u, wu3 = 0.5 * u3 - 0.5 * u2;
+    const wv0 = -0.5 * v3 + v2 - 0.5 * v, wv1 = 1.5 * v3 - 2.5 * v2 + 1, wv2 = -1.5 * v3 + 2 * v2 + 0.5 * v, wv3 = 0.5 * v3 - 0.5 * v2;
+    const i0 = i > 0 ? i - 1 : 0, i3 = i < nx - 2 ? i + 2 : nx - 1;
+    let sum = 0;
+    for (let m = 0; m < 4; m++) {
+      const jj = Math.min(ny - 1, Math.max(0, j - 1 + m)) * nx;
+      const row = z[jj + i0] * wu0 + z[jj + i] * wu1 + z[jj + i + 1] * wu2 + z[jj + i3] * wu3;
+      sum += row * (m === 0 ? wv0 : m === 1 ? wv1 : m === 2 ? wv2 : wv3);
+    }
+    return sum;
   }
 
   /** 8-bit mask texture: 1 where there is skin a brush could touch, 0 in the air or far below. */
@@ -79,7 +90,9 @@ export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
   };
 }
 
-const RINGS = [0, 0.02, 0.045, 0.08, 0.14, 0.24, 0.4, 0.6, 0.8, 1];
+// Dense enough that a mirror finish shows no facets from interpolated normals.
+const RINGS = [0, 0.02, 0.045, 0.08, 0.12, 0.16, 0.2];
+for (let t = 0.25; t < 1.001; t += 0.05) RINGS.push(Math.min(1, t));
 
 /**
  * NailPlate geometry in paint coords: rings from the outline in to a spine, so the mesh edge

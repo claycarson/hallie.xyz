@@ -12,6 +12,8 @@ import { PaintTargets } from './paint/targets.js';
 import { StampRenderer } from './paint/stamps.js';
 import { StrokeEngine } from './paint/stroke.js';
 import { NailStats } from './paint/stats.js';
+import { Leveler, WET_HZ } from './paint/leveling.js';
+import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
 
@@ -82,8 +84,27 @@ async function boot() {
   uniforms.tSdf.value = sdf.texture; uniforms.tPig.value = targets.pigment.texture;
   uniforms.tMat.value = targets.material.texture; uniforms.tDet.value = targets.detail.texture;
 
+  const leveler = new Leveler(targets.size, caps.halfFloat, tuning.wet);
+  const sound = new BrushSound();
+  const wet = { left: 0, acc: 0 };                  // seconds of wetness left; tick remainder
+  const wetTick = (seconds) => {
+    leveler.tick(renderer, targets, sdf.texture, seconds);
+    uniforms.tPig.value = targets.pigment.texture;
+    stats.setFinger(sdf.texture, targets, frame.rect);
+    state.dirty = true;
+  };
+  /** Advance wet polish by dt seconds (level + dry), at the fixed tick rate. */
+  const wetAdvance = (dt, maxTicks = 4) => {
+    if (wet.left <= 0) return;
+    wet.acc += dt;
+    let n = Math.min(maxTicks, Math.floor(wet.acc * WET_HZ));
+    wet.acc -= n / WET_HZ; if (wet.acc > 1 / WET_HZ) wet.acc = 0;
+    for (; n > 0 && wet.left > 0; n--) { wetTick(); wet.left -= 1 / WET_HZ; }
+  };
+
   const flush = () => {
     if (!engine.count) return;
+    wet.left = tuning.wet.drySeconds + 0.5;
     stamps.flush(renderer, engine.stamps, engine.count, targets);
     state.stamps += engine.count; engine.reset(); state.dirty = true;
   };
@@ -185,6 +206,7 @@ async function boot() {
   }
 
   const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds });
+  canvas.addEventListener('pointerdown', () => sound.wake());
 
   // ---- start -------------------------------------------------------------------------------
   setShape(SHAPES.includes(state.shape) ? state.shape : 'round', Number.isFinite(state.free) ? state.free : cfg.naturalFree);
@@ -205,11 +227,14 @@ async function boot() {
     ];
   }) : null;
 
-  let frames = 0;
+  let frames = 0, prev = performance.now();
   const waiters = [];
   function loop(now) {
+    const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
     frame.update();
     flush();
+    if (!fixed) wetAdvance(dt);
+    sound.update(engine.down ? engine.speed : 0, engine.load);
     if (state.dirty && now - state.lastStats > tuning.stats.intervalMs) {
       state.dirty = false; state.lastStats = now;
       stats.refresh(renderer);
@@ -231,8 +256,11 @@ async function boot() {
     three: { scene, camera, renderer, key },
     setTheme: (id) => setTheme(themes.find((t) => t.id === id) || themes[0]),
     view: (scene, flip = state.flip) => { state.scene = scene; state.flip = flip; placeCamera(); return nextFrame(); },
-    clear: () => { targets.clear(renderer); engine.dip(); state.dirty = true; return nextFrame(); },
+    clear: () => { targets.clear(renderer); engine.dip(); wet.left = 0; state.dirty = true; return nextFrame(); },
     dip: () => engine.dip(),
+    /** Let wet polish level and dry for `seconds` of game time, without waiting. */
+    advance: (seconds) => { flush(); for (let n = Math.round(seconds * WET_HZ); n > 0 && wet.left > 0; n--) { wetTick(); wet.left -= 1 / WET_HZ; } return nextFrame(); },
+    wetLeft: () => wet.left,
     setBrush: (radius) => { engine.radius = radius ?? tuning.brush.radius; },
     area: () => area(nail.info.points),
     stats: async () => { flush(); return stats.refresh(renderer); },

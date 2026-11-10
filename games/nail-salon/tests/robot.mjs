@@ -97,6 +97,32 @@ r = await run(async () => {
 check('flat Pencil paints wider than upright', r.flat > r.upright * 1.2, `upright ${f(r.upright)} flat ${f(r.flat)}`);
 check('palm rejection, then finger painting returns', r.palm === 0 && r.later > 0, `stamps ${r.palm} then ${r.later}`);
 
+// M0.7: a wet stroke against the outline's edge has not crept onto the skin after 20 s, its
+// edge has spread no more than 3% of the nail width, and the polish is dry.
+r = await run(async () => {
+  const S = window.__salon, out = {};
+  await S.clear(); await S.stroke([[0.4, 0.3], [0.4, 0.7]], { speed: 1.0 }); await S.stats();
+  const edge = () => { let x = 0.4; while (x > -0.3 && S.filmAt(x, 0.5) > 0.3) x -= 0.005; return x; };
+  out.before = edge(); out.cov0 = (await S.stats()).coverage;
+  await S.advance(20); out.st = await S.stats(); out.after = edge(); out.wet = S.wetLeft();
+  return out;
+});
+check('20 s of leveling: no spill, edge spread ≤ 0.03', r.st.spill === 0 && Math.abs(r.after - r.before) <= 0.03, `spill ${f(r.st.spill)} edge ${f(r.before)} → ${f(r.after)} wetLeft ${f(r.wet)}`);
+await shot('leveled');
+
+// M0.7: the other finishes read back as themselves.
+r = await run(async () => {
+  const S = window.__salon, L = S.info().length, out = {};
+  for (const id of ['shimmer-pink', 'glitter-gold', 'chrome-silver', 'holo-lilac']) {
+    await S.clear(); S.setPolish(id); S.setRequest(id);
+    for (const x of [-0.3, 0, 0.3]) await S.stroke([[x, 0.08], [x, L - 0.04]], { speed: 1.0 });
+    out[id] = await S.stats();
+  }
+  S.setPolish('cream-red'); S.setRequest('cream-red');
+  return out;
+});
+for (const [id, st] of Object.entries(r)) check(`finish reads back: ${id}`, st.finishMatch > 0.9 && st.colorMatch > 0.9, `finish ${f(st.finishMatch)} colour ${f(st.colorMatch)}`);
+
 await browser.close();
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);
