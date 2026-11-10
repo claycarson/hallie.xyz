@@ -1,0 +1,13 @@
+{
+  "finishes": {
+    "cream": { "id": 1, "translucency": 0, "roughness": 0.25, "metalness": 0, "iridescence": 0 }
+  },
+  "polishes": [
+    { "id": "cream-red", "name": "Red", "color": "#c8102e", "finish": "cream" },
+    { "id": "cream-rose", "name": "Rose", "color": "#d77a8c", "finish": "cream" },
+    { "id": "cream-pink", "name": "Pink", "color": "#ff3fa8", "finish": "cream" },
+    { "id": "cream-lilac", "name": "Lilac", "color": "#c9b3ff", "finish": "cream" },
+    { "id": "cream-white", "name": "White", "color": "#f7f3ee", "finish": "cream" },
+    { "id": "cream-black", "name": "Black", "color": "#1c1a1f", "finish": "cream" }
+  ]
+}

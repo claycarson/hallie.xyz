@@ -1,0 +1,17 @@
+{
+  "model": "standin",
+  "note": "Stand-in procedural finger until the M0.2 hand bake-off. Frames are hand-tuned data (PLAN 3.3).",
+  "maxFree": 1.0,
+  "fold": {
+    "sink": 0.05, "sinkBand": 0.04, "lift": 0.012, "crown": 0.02, "edgeThickness": 0.03,
+    "smile": 0.10,
+    "grooveWidth": 0.03, "grooveDark": 0.45,
+    "lipStart": 0.03, "lipEnd": 0.10, "lipStrength": 0.35,
+    "rimWidth": 0.02, "rimStrength": 0.6
+  },
+  "fingers": [
+    { "finger": 1, "bone": null,
+      "origin": [0, 0, 0], "tipDir": [0, 0, 1], "normal": [0, 1, 0],
+      "width": 0.0125, "bedLength": 0.011, "naturalFree": 0.15, "dome": 0.45, "arch": 0.08 }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "nail-salon-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 8813 --bind 127.0.0.1",
+    "test": "node --test tests/*.test.js",
+    "shot": "node tests/shot.mjs",
+    "robot": "node tests/robot.mjs"
+  },
+  "devDependencies": { "playwright": "1.61.0" }
+}

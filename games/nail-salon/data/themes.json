@@ -1,0 +1,17 @@
+[
+  { "id": "boutique", "name": "Boutique",
+    "css": { "--bg": "radial-gradient(ellipse at 50% 40%, #fbf1ea 0%, #f0d9cf 70%, #e3c4b8 100%)", "--panel": "#fffaf6", "--ink": "#4a3530", "--accent": "#c9897a" },
+    "table": "#ead2c6",
+    "lighting": { "hdri": "studio_small_09", "envIntensity": 1.0, "exposure": 1.0, "envRot": 1.2, "key": ["#fff1e6", 0.7], "rim": ["#ffe2d2", "#ffd9c4", 1.2] },
+    "skin": "#e9b597", "nailBed": "#f1c3b8" },
+  { "id": "candy", "name": "Candy Pop",
+    "css": { "--bg": "linear-gradient(135deg, #ffb3e0 0%, #c9a6ff 50%, #9fdcff 100%)", "--panel": "#ffffff", "--ink": "#4b2a7a", "--accent": "#ff3fa8" },
+    "table": "#f6c9ee",
+    "lighting": { "hdri": "studio_small_09", "envIntensity": 1.0, "exposure": 1.05, "envRot": 0.4, "key": ["#ffffff", 0.6], "rim": ["#ffb3e6", "#9fdcff", 1.6] },
+    "skin": "#f6c6a5", "nailBed": "#f6cbc2" },
+  { "id": "midnight", "name": "Midnight Glam",
+    "css": { "--bg": "radial-gradient(ellipse at 50% 35%, #3a1d6e 0%, #1a0d3a 60%, #0a0518 100%)", "--panel": "#1e1240", "--ink": "#f5f0ff", "--accent": "#ff6cc9" },
+    "table": "#2a1650",
+    "lighting": { "hdri": "studio_small_09", "envIntensity": 1.15, "exposure": 1.1, "envRot": 2.2, "key": ["#ffffff", 0.5], "rim": ["#ff6cc9", "#6fd8ff", 3.2] },
+    "skin": "#b97a58", "nailBed": "#e0aca0" }
+]

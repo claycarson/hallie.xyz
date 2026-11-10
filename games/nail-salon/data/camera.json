@@ -1,0 +1,5 @@
+{
+  "fov": 20,
+  "nail": { "distance": 7.2, "centre": 0.42 },
+  "hand": { "distance": 15, "pitch": 38, "yaw": 22, "centre": -1.2 }
+}
