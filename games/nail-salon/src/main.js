@@ -264,7 +264,7 @@ async function boot() {
     wetLeft: () => wet.left,
     setBrush: (radius) => { engine.radius = radius ?? tuning.brush.radius; },
     area: () => area(nail.info.points),
-    stats: async () => { flush(); return stats.refresh(renderer); },
+    stats: async () => { flush(); return stats.refresh(renderer, true); },
     filmAt: (x, y) => stats.filmAt(x, y),
     /**
      * Feed synthetic pointer samples through the real input path.

@@ -70,7 +70,7 @@ export class NailStats {
     this.inside = new Float32Array(n);      // fraction of each pixel inside the outline
     this.outside = new Uint8Array(n);       // 1 where the whole pixel is clear of the outline
     this.insideSum = 1;
-    this.busy = false;
+    this._flight = null;
     this.rect = null;
     /** @type {{coverage:number, evenness:number, colorMatch:number, finishMatch:number, spill:number}} */
     this.last = { coverage: 0, evenness: 1, colorMatch: 0, finishMatch: 0, spill: 0 };
@@ -107,15 +107,21 @@ export class NailStats {
     this.insideSum = Math.max(1, sum);
   }
 
-  /** Render and read the stats. Resolves with the numbers; skips if a read is in flight. */
-  async refresh(renderer) {
-    if (this.busy) return this.last;
-    this.busy = true;
-    try {
+  /**
+   * Render and read the stats. The frame loop calls this loosely (a read already in flight is
+   * enough for it); pass fresh = true to be sure the numbers include everything painted so far.
+   */
+  async refresh(renderer, fresh = false) {
+    if (this._flight) {
+      await this._flight.catch(() => {});
+      if (!fresh) return this.last;
+    }
+    this._flight = (async () => {
       fullscreenPass(renderer, this.material, this.target);
       await renderer.readRenderTargetPixelsAsync(this.target, 0, 0, STATS_SIZE, STATS_SIZE, this.pixels);
       this.last = this.compute();
-    } finally { this.busy = false; }
+    })();
+    try { await this._flight; } finally { this._flight = null; }
     return this.last;
   }
 
