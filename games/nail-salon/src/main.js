@@ -6,7 +6,7 @@ import { NailFrame } from './hand/frame.js';
 import { loadHand } from './hand/model.js';
 import { outline, sdPolygon, area, SHAPES } from './hand/outline.js';
 import { OutlineSdf } from './hand/sdf.js';
-import { SkinHeight, makePlateZ, buildPlate } from './hand/plate.js';
+import { SkinHeight, makePlateZ, buildPlate, buildPlateNormals } from './hand/plate.js';
 import { makeFingerUniforms, makeNailMaterial, makeSkinMaterial } from './hand/materials.js';
 import { PaintTargets } from './paint/targets.js';
 import { StampRenderer } from './paint/stamps.js';
@@ -96,7 +96,9 @@ async function boot() {
     o.uniforms.tSdf.value = o.sdf.texture;
     o.uniforms.uCuticleDepth.value = info.cuticleDepth;
     o.mesh.geometry.dispose();
-    o.mesh.geometry = buildPlate(info, makePlateZ(o.frame, info.points, o.skin, fold, o.cfg), fold, o.frame.bed);
+    const z = makePlateZ(o.frame, info.points, o.skin, fold, o.cfg);
+    o.mesh.geometry = buildPlate(info, z, fold, o.frame.bed);
+    o.uniforms.tNrm.value = buildPlateNormals(z, o.frame.rect, o.uniforms.tNrm.value);
   }
 
   // ---- paint -------------------------------------------------------------------------------
@@ -143,6 +145,7 @@ async function boot() {
     nail.plateZ = makePlateZ(frame, nail.info.points, skin, fold, cfg);
     nailMesh.geometry.dispose();
     nailMesh.geometry = buildPlate(nail.info, nail.plateZ, fold, frame.bed);
+    uniforms.tNrm.value = buildPlateNormals(nail.plateZ, frame.rect, uniforms.tNrm.value);
     uniforms.uCuticleDepth.value = nail.info.cuticleDepth;
     engine.nailLength = nail.info.length;
     stats.refreshGeometry(renderer);
@@ -271,7 +274,6 @@ async function boot() {
       state.dirty = false; state.lastStats = now;
       stats.refresh(renderer);
     }
-    if (!fixed) scene.environmentRotation.y = state.theme.lighting.envRot + Math.sin(now / 3800) * 0.35;
     renderer.render(scene, camera);
     overlay?.tick(); frames++;
     while (waiters.length) waiters.pop()();

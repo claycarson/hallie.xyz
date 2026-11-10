@@ -54,12 +54,53 @@ export class SkinHeight {
       if (!this.valid[k]) this.z[k] = Math.min(this.z[k - nx], -0.6);
     }
     for (let i = 0; i < nx; i++) if (!this.valid[i]) this.z[i] = -0.6;
+    this.zs = this.blurred(4);
+  }
+
+  /** Gaussian-blurred copy of the heights (sigma in cells), from cells with skin only. */
+  blurred(sigma) {
+    const { nx, ny, z, valid } = this, R = Math.ceil(sigma * 2.5), k = [];
+    for (let i = -R; i <= R; i++) k.push(Math.exp(-i * i / (2 * sigma * sigma)));
+    const pass = (src, wsrc, dx, dy) => {
+      const out = new Float32Array(nx * ny), wout = new Float32Array(nx * ny);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        let sum = 0, w = 0;
+        for (let t = -R; t <= R; t++) {
+          const ii = i + t * dx, jj = j + t * dy;
+          if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+          const q = jj * nx + ii, g = k[t + R] * wsrc[q];
+          sum += src[q] * g; w += g;
+        }
+        out[j * nx + i] = sum; wout[j * nx + i] = w;
+      }
+      return [out, wout];
+    };
+    // Take the highest skin within two cells first, so the smooth surface lies on top of the
+    // model's nail rather than cutting through it where the nail curves hard.
+    const w0 = Float32Array.from(valid), z0 = new Float32Array(nx * ny), D = 3;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      let m = -Infinity;
+      for (let b = Math.max(0, j - D); b <= Math.min(ny - 1, j + D); b++) for (let a = Math.max(0, i - D); a <= Math.min(nx - 1, i + D); a++) if (valid[b * nx + a] && z[b * nx + a] > m) m = z[b * nx + a];
+      z0[j * nx + i] = m > -Infinity ? m : z[j * nx + i];
+    }
+    let [a, wa] = pass(z0, w0, 1, 0);
+    for (let q = 0; q < a.length; q++) { a[q] = wa[q] > 1e-6 ? a[q] / wa[q] : z[q]; }
+    const wv = wa.map((v) => (v > 1e-6 ? 1 : 0));
+    let [b, wb] = pass(a, wv, 0, 1);
+    for (let q = 0; q < b.length; q++) b[q] = wb[q] > 1e-6 ? b[q] / wb[q] : z[q];
+    return b;
   }
 
   /** Height at paint coords (x, y), in nail widths. Catmull-Rom, so slopes are continuous
    *  (bilinear made a mirror finish show the grid). */
-  at(x, y) {
-    const r = this.rect, nx = this.nx, ny = this.ny, z = this.z;
+  at(x, y) { return this.sample(this.z, x, y); }
+
+  /** The same surface with the model's small bumps and facets smoothed away: what the nail
+   *  plate follows, so a glossy finish reflects cleanly. */
+  smooth(x, y) { return this.sample(this.zs, x, y); }
+
+  sample(z, x, y) {
+    const r = this.rect, nx = this.nx, ny = this.ny;
     const fx = Math.min(nx - 1, Math.max(0, (x - r.x0) / r.w * (nx - 1)));
     const fy = Math.min(ny - 1, Math.max(0, (y - r.y0) / r.h * (ny - 1)));
     const i = Math.min(nx - 2, fx | 0), j = Math.min(ny - 2, fy | 0), u = fx - i, v = fy - j;
@@ -97,14 +138,17 @@ export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
   const smile = (x) => bed - fold.smile * 4 * x * x;
   // The plate leaves the finger a little before the bed ends and runs on along its own tangent,
   // taken from well back on the bed: the skin right at the bed end is the fingertip dropping away.
-  const BACK = 0.12, RUN = 0.25, SIDE = 0.34;
+  const BACK = 0.16, RUN = 0.25, SIDE = 0.36;
   const zFree = (x, y) => {
     const b = smile(x) - BACK;
-    if (y <= b) return skin.at(x, y) + fold.lift;
-    // Tangent from the middle of the nail; the side walls are too steep to extend from.
-    const xs = Math.max(-SIDE, Math.min(SIDE, x)), z0 = skin.at(xs, b), slope = (z0 - skin.at(xs, b - RUN)) / RUN, d = y - b;
-    const side = Math.max(-0.3, skin.at(x, b) - z0);
-    return z0 + side + fold.lift + slope * d - cfg.arch * d * d;
+    // Tangent from the middle of the nail. Across the nail the free edge keeps the bed's curve
+    // out to SIDE and runs straight from there: the finger's side walls are too steep to follow.
+    const xs = Math.max(-SIDE, Math.min(SIDE, x)), z0 = skin.smooth(xs, b), slope = (z0 - skin.smooth(xs, b - RUN)) / RUN, d = y - b;
+    const sgn = x < 0 ? -1 : 1, lat = (skin.smooth(sgn * SIDE, b) - skin.smooth(sgn * (SIDE - 0.08), b)) / 0.08;
+    const ext = z0 + lat * Math.abs(x - xs) + slope * d - (d > 0 ? cfg.arch * d * d : 0);
+    if (d >= 0) return ext + fold.lift;
+    const w = smoothstep(-0.3, 0, d);                      // ease from the bed onto the tangent
+    return skin.smooth(x, y) * (1 - w) + ext * w + fold.lift;
   };
   return (x, y) => {
     const d = Math.max(0, -sdPolygon(outlinePts, x, y));
@@ -162,4 +206,23 @@ export function buildPlate(outlineInfo, plateZ, fold, bed) {
   geo.setAttribute('paintXY', new THREE.Float32BufferAttribute(pxy, 2));
   geo.setIndex(idx);
   return geo;
+}
+
+/**
+ * The plate's normals as a texture over the paint frame (paint-space xyz, half-float). The nail
+ * material reads its normal from here per pixel: normals interpolated across the plate's long
+ * thin triangles showed as hatching in a mirror-like highlight.
+ */
+export function buildPlateNormals(plateZ, rect, old, nx = 192, ny = 320) {
+  const data = new Uint16Array(nx * ny * 4), E = 0.008, h = THREE.DataUtils.toHalfFloat;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const x = rect.x0 + rect.w * (i + 0.5) / nx, y = rect.y0 + rect.h * (j + 0.5) / ny;
+    const gx = (plateZ(x + E, y) - plateZ(x - E, y)) / (2 * E), gy = (plateZ(x, y + E) - plateZ(x, y - E)) / (2 * E);
+    const inv = 1 / Math.hypot(gx, gy, 1), k = (j * nx + i) * 4;
+    data[k] = h(-gx * inv); data[k + 1] = h(-gy * inv); data[k + 2] = h(inv); data[k + 3] = h(1);
+  }
+  old?.dispose();
+  const t = new THREE.DataTexture(data, nx, ny, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+  return t;
 }

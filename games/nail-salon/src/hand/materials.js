@@ -10,7 +10,7 @@ const srgb = (hex) => new THREE.Color(hex);     // THREE.Color converts sRGB hex
 export function makeFingerUniforms(frame, fold, tuning) {
   const r = frame.rect;
   return {
-    tSdf: { value: null }, tPig: { value: null }, tMat: { value: null }, tDet: { value: null },
+    tNrm: { value: null }, tSdf: { value: null }, tPig: { value: null }, tMat: { value: null }, tDet: { value: null },
     uRect: { value: new THREE.Vector4(r.x0, r.y0, r.w, r.h) },
     uBed: { value: frame.bed },
     uSmile: { value: fold.smile },
@@ -71,8 +71,8 @@ export function makeNailMaterial(uniforms) {
     clearcoat: 1, clearcoatRoughness: 0.03, iridescence: 1, iridescenceIOR: 1.5, iridescenceThicknessRange: [250, 650],
   });
   m.onBeforeCompile = (shader) => inject(shader, uniforms,
-    'attribute vec2 paintXY;\nvarying vec2 vPXY;', 'vPXY = paintXY;', {
-      decl: 'varying vec2 vPXY;',
+    'attribute vec2 paintXY;\nvarying vec2 vPXY;\nvarying float vSkirt;', 'vPXY = paintXY; vSkirt = 1.0 - step(0.001, abs(normal.z));', {
+      decl: 'varying vec2 vPXY;\nvarying float vSkirt;\nuniform sampler2D tNrm;\nuniform mat3 normalMatrix;',
       after: {
         color_fragment: /* glsl */`
           vec2 nlP = vPXY, nlUV = nlUv(vPXY);
@@ -103,6 +103,11 @@ export function makeNailMaterial(uniforms) {
           nlRough = mix(nlRough, 0.04, nlDt.b * nlFilm);               // sparkle flakes are little mirrors
           roughnessFactor = nlRough;
           metalnessFactor = nlM.b * nlFilm;`,
+        normal_fragment_begin: /* glsl */`
+          if (vSkirt < 0.5) {            // the top surface: per-pixel normal from the plate's own shape
+            normal = normalize(normalMatrix * texture2D(tNrm, nlUV).xyz) * faceDirection;
+            nonPerturbedNormal = normal;
+          }`,
         normal_fragment_maps: /* glsl */`
           {
             float ridge = (1.0 - nlFilm) * 0.012 * cos(nlP.x * 120.0 + 6.0 * nlNoise(vec2(nlP.x * 14.0, nlP.y * 0.7))) * nlNoise(vec2(nlP.x * 25.0, 3.0));
@@ -112,11 +117,11 @@ export function makeNailMaterial(uniforms) {
         lights_physical_fragment: /* glsl */`
           material.clearcoat = max(0.22 * (1.0 - nlFilm), smoothstep(0.2, 0.8, nlFilm) * (1.0 - smoothstep(0.5, 0.7, nlM.g)));
           material.clearcoat *= 1.0 - nlRimK;
-          material.clearcoatRoughness = mix(0.25, 0.03, nlFilm);
+          material.clearcoatRoughness = mix(0.25, 0.10, nlFilm);
           material.iridescence = nlM.a * nlFilm;`,
       },
     });
-  m.customProgramCacheKey = () => 'nail-plate-1';
+  m.customProgramCacheKey = () => 'nail-plate-2';
   return m;
 }
 

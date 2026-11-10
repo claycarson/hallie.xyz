@@ -5,7 +5,7 @@
   "active": 1,
   "maxFree": 1.0,
   "fold": {
-    "sink": 0.05, "sinkBand": 0.04, "lift": 0.012, "crown": 0.02, "edgeThickness": 0.03,
+    "sink": 0.05, "sinkBand": 0.04, "lift": 0.02, "crown": 0.02, "edgeThickness": 0.03,
     "smile": 0.10,
     "grooveWidth": 0.03, "grooveDark": 0.45,
     "lipStart": 0.03, "lipEnd": 0.16, "lipStrength": 0.25,
