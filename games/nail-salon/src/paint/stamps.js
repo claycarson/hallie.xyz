@@ -36,10 +36,10 @@ float noise(vec2 p) {
 float footprint(out float sd) {
   vec2 uv = (vP - uRect.xy) / uRect.zw;
   sd = texture2D(tSdf, uv).r;
-  float soft = 1.0 - smoothstep(0.5, 1.0, length(vLocal));
+  float soft = 1.0 - smoothstep(0.62, 1.0, length(vLocal));
   // Bristle lines run along the stroke: noise across the brush, drifting slowly along it.
   float across = vLocal.y * vParams.x;
-  float streak = mix(1.0 - uStreak, 1.0, noise(vec2(across * 85.0, vParams.w * 1.3)));
+  float streak = mix(1.0 - uStreak, 1.0, (0.6 * noise(vec2(across * 120.0, vParams.w * 1.3)) + 0.4 * noise(vec2(across * 310.0, vParams.w * 2.1))));
   float wall = mix(1.0, 1.0 - smoothstep(0.0, uWall, sd), vParams.z);     // tipInside: stop at the fold
   float skin = mix(1.0, texture2D(tSkinMask, uv).r, step(0.0, sd));       // no paint in thin air
   return soft * streak * wall * skin;

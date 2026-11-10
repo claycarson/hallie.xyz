@@ -83,7 +83,7 @@ export function makeNailMaterial(uniforms) {
           // Bare nail, from the base out: lunula, bed, onychodermal band, free edge.
           float nlFree = smoothstep(nlS - 0.015, nlS + 0.03, nlP.y);
           float nlBand = exp(-pow((nlP.y - (nlS - 0.04)) / 0.03, 2.0));
-          float nlLun = 1.0 - smoothstep(0.7, 1.0, length(vec2(nlP.x / 0.30, (nlP.y - 0.02) / 0.27)));
+          float nlLun = 1.0 - smoothstep(0.7, 1.0, length(vec2(nlP.x / 0.27, (nlP.y - 0.03) / 0.21)));
           vec3 nlBare = uBedCol * mix(1.0, 0.93, smoothstep(0.2, uBed, nlP.y));
           nlBare = mix(nlBare, mix(uBedCol, vec3(1.0, 0.96, 0.93), 0.6), nlLun * 0.6);
           nlBare = mix(nlBare, vec3(0.98, 0.9, 0.86), nlBand * 0.35);
@@ -104,7 +104,7 @@ export function makeNailMaterial(uniforms) {
           metalnessFactor = nlM.b * nlFilm;`,
         normal_fragment_maps: /* glsl */`
           {
-            float ridge = (1.0 - nlFilm) * 0.035 * cos(nlP.x * 150.0 + 3.0 * nlNoise(vec2(nlP.x * 9.0, 0.0)));
+            float ridge = (1.0 - nlFilm) * 0.012 * cos(nlP.x * 120.0 + 6.0 * nlNoise(vec2(nlP.x * 14.0, nlP.y * 0.7))) * nlNoise(vec2(nlP.x * 25.0, 3.0));
             vec2 flake = (nlDt.rg - 0.5) * 2.0 * nlFilm;
             normal = nlTilt(normal, -vViewPosition, nlP, vec2(ridge, 0.0) + flake);
           }`,
@@ -154,7 +154,7 @@ export function makeSkinMaterial(uniforms) {
           skCol *= mix(vec3(1.0), vec3(0.74, 0.56, 0.52), skGroove * uGroove.y);
           // Spilled polish sits flatter and thinner on skin than on the nail.
           vec4 skPig = texture2D(tPig, skUV);
-          float skFilm = clamp(skPig.a, 0.0, 1.0) * skIn * step(0.0, skSd);
+          float skFilm = clamp(skPig.a, 0.0, 1.0) * skIn * smoothstep(0.015, 0.03, skSd);   // past the fold wall's hair
           skCol = mix(skCol, skPig.rgb / max(skPig.a, 1e-4), skFilm * uSkinFilm);
           diffuseColor.rgb = skCol;`,
         metalnessmap_fragment: /* glsl */`
