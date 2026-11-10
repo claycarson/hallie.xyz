@@ -2,9 +2,10 @@
 
 **https://dev.hallie.xyz/?debug** (HTTPS dev copy of the `nail-salon` branch; not live).
 
-Early look only, before the M0 gate. One nail on a stand-in finger.
-1. If there is no sound, check the iPad's mute in Control Center first.
-2. Paint with the Pencil. Does it keep up with your hand? Is the brush sound right?
+Early look only, before the M0 gate. The real hand; one nail takes paint (the index finger,
+or `&finger=0…4`, thumb to pinky). `?scene=hand&debug` shows the whole hand.
+1. Does the nail look like it grows out of the finger?
+2. Paint with the Pencil. Does it keep up with your hand? Does it lay down like a brush, not a spray?
 3. Rest your palm on the screen while painting. The palm must not paint.
 4. Put the Pencil down for a minute, then paint with a finger. It should work.
 5. Tilt the Pencil flat, then upright. The stroke should get wider, then narrower.

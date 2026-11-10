@@ -1,6 +1,9 @@
 # Hand model candidates (M0.2 bake-off)
 
-**Blocked:** Sketchfab downloads need a login (the download API returns 401 without a token).
+**Decided 2026-11-10: Clay picked Female Hand (90f5d595) by yuzutarou, CC BY 4.0, and downloaded it himself.
+It is a 674k-triangle sculpt with modelled nails and folds, no textures, no rig. The rest of this file is the record of the search.**
+
+**Was blocked:** Sketchfab downloads need a login (the download API returns 401 without a token).
 Nothing has been downloaded or tried in the scene yet. Found through Sketchfab's public search
 API on 2026-11-10; licences are as the API reports them and must be re-checked on each page.
 

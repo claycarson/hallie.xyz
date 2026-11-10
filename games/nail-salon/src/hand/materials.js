@@ -35,7 +35,7 @@ uniform vec3 uLip;
 vec2 nlUv(vec2 p) { return (p - uRect.xy) / uRect.zw; }
 float nlSmile(float x) { return uBed - uSmile * 4.0 * x * x; }
 // How much of this point's edge is a skin fold (1) rather than free edge (0).
-float nlFoldW(vec2 p) { float s = nlSmile(p.x); return 1.0 - smoothstep(s - 0.10, s, p.y); }
+float nlFoldW(vec2 p) { float s = nlSmile(p.x); return 1.0 - smoothstep(s - 0.30, s - 0.12, p.y); }
 float nlHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float nlNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -120,7 +120,7 @@ export function makeNailMaterial(uniforms) {
   return m;
 }
 
-/** The skin: fold shading around the nail, spilled polish, and (stand-in only) procedural tone. */
+/** The skin: fold shading around the nail, spilled polish, and (uProcSkin, unused on the real hand) procedural tone. */
 export function makeSkinMaterial(uniforms) {
   const m = new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: 0.55, metalness: 0,
@@ -134,7 +134,7 @@ export function makeSkinMaterial(uniforms) {
         color_fragment: /* glsl */`
           vec2 skUV = nlUv(vPaint.xy);
           float skIn = step(0.0, skUV.x) * step(skUV.x, 1.0) * step(0.0, skUV.y) * step(skUV.y, 1.0)
-                     * smoothstep(-0.6, -0.4, vPaint.z);
+                     * smoothstep(-0.6, -0.4, vPaint.z) * step(vPaint.z, 1.0);   // this fingertip only
           float skSd = mix(9.0, texture2D(tSdf, skUV).r, skIn);
           float skFold = nlFoldW(vPaint.xy) * skIn;
           vec3 skCol = uSkinCol;

@@ -1,3 +1,7 @@
 node_modules/
 tests/shots/
 package-lock.json
+# The hand model as downloaded (76 MB). hand.bin is built from it: tools/build-hand.mjs
+assets/hand/*.glb
+assets/hand/*.usdz
+assets/hand/*.zip

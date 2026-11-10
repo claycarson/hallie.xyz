@@ -6,28 +6,48 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smoothstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 
 /**
- * Skin height under the paint frame, sampled once by raycasting the skin mesh straight down
- * the nail normal. Works on any hand model; the plate conforms to it so its edges can sink
- * under the folds by a known amount (PLAN R5).
+ * Skin height under the paint frame: the skin mesh drawn into a small height grid, looking
+ * straight down the nail normal (a software z-buffer keeping the highest surface). Works on any
+ * hand model; the plate conforms to it so its edges can sink under the folds by a known
+ * amount (PLAN R5).
  */
 export class SkinHeight {
-  constructor(frame, skinMeshes, nx = 65, ny = 97) {
+  constructor(frame, skinMeshes, nx = 129, ny = 193) {
     this.rect = frame.rect; this.nx = nx; this.ny = ny;
-    this.z = new Float32Array(nx * ny);
+    this.z = new Float32Array(nx * ny).fill(-Infinity);
     this.valid = new Uint8Array(nx * ny);
     frame.update();
-    const ray = new THREE.Raycaster(), o = new THREE.Vector3(), d = new THREE.Vector3(), hits = [];
-    const m = frame.group.matrixWorld, START = 1.5;
-    d.set(0, 0, -1).transformDirection(m);
-    const scale = new THREE.Vector3().setFromMatrixColumn(m, 2).length();   // world metres per nail width
-    ray.far = scale * 4;
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      o.set(this.rect.x0 + this.rect.w * i / (nx - 1), this.rect.y0 + this.rect.h * j / (ny - 1), START).applyMatrix4(m);
-      ray.set(o, d); hits.length = 0;
-      ray.intersectObjects(skinMeshes, false, hits);
-      const k = j * nx + i;
-      if (hits.length) { this.z[k] = START - hits[0].distance / scale; this.valid[k] = 1; }
+    const r = this.rect, TOP = 1.5, BOTTOM = -2.5, z = this.z;
+    const m = new THREE.Matrix4(), p = new THREE.Vector3();
+    for (const mesh of skinMeshes) {
+      m.multiplyMatrices(frame.worldToPaint, mesh.matrixWorld);
+      const pos = mesh.geometry.getAttribute('position'), index = mesh.geometry.getIndex();
+      const g = new Float32Array(pos.count * 3);                 // grid x, grid y, height
+      for (let v = 0; v < pos.count; v++) {
+        p.fromBufferAttribute(pos, v).applyMatrix4(m);
+        g[v * 3] = (p.x - r.x0) / r.w * (nx - 1); g[v * 3 + 1] = (p.y - r.y0) / r.h * (ny - 1); g[v * 3 + 2] = p.z;
+      }
+      const nt = index ? index.count / 3 : pos.count / 3;
+      for (let t = 0; t < nt; t++) {
+        const a = (index ? index.getX(t * 3) : t * 3) * 3, b = (index ? index.getX(t * 3 + 1) : t * 3 + 1) * 3, c = (index ? index.getX(t * 3 + 2) : t * 3 + 2) * 3;
+        const ax = g[a], ay = g[a + 1], bx = g[b], by = g[b + 1], cx = g[c], cy = g[c + 1];
+        const i0 = Math.max(0, Math.ceil(Math.min(ax, bx, cx))), i1 = Math.min(nx - 1, Math.floor(Math.max(ax, bx, cx)));
+        if (i0 > i1) continue;
+        const j0 = Math.max(0, Math.ceil(Math.min(ay, by, cy))), j1 = Math.min(ny - 1, Math.floor(Math.max(ay, by, cy)));
+        if (j0 > j1) continue;
+        const az = g[a + 2], bz = g[b + 2], cz = g[c + 2];
+        if (Math.min(az, bz, cz) > TOP || Math.max(az, bz, cz) < BOTTOM) continue;
+        const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+        if (Math.abs(den) < 1e-12) continue;
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const u = ((by - cy) * (i - cx) + (cx - bx) * (j - cy)) / den, w = ((cy - ay) * (i - cx) + (ax - cx) * (j - cy)) / den, q = 1 - u - w;
+          if (u < -1e-6 || w < -1e-6 || q < -1e-6) continue;
+          const h = u * az + w * bz + q * cz, k = j * nx + i;
+          if (h <= TOP && h > z[k]) { z[k] = h; this.valid[k] = 1; }
+        }
+      }
     }
+    for (let k = 0; k < z.length; k++) if (!this.valid[k]) z[k] = 0;
     // Fill misses (air past the fingertip) from the row before, so sampling stays finite.
     for (let j = 1; j < ny; j++) for (let i = 0; i < nx; i++) {
       const k = j * nx + i;
@@ -75,16 +95,21 @@ export class SkinHeight {
 export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
   const bed = frame.bed;
   const smile = (x) => bed - fold.smile * 4 * x * x;
+  // The plate leaves the finger a little before the bed ends and runs on along its own tangent,
+  // taken from well back on the bed: the skin right at the bed end is the fingertip dropping away.
+  const BACK = 0.12, RUN = 0.25, SIDE = 0.34;
   const zFree = (x, y) => {
-    const b = smile(x);
+    const b = smile(x) - BACK;
     if (y <= b) return skin.at(x, y) + fold.lift;
-    const z0 = skin.at(x, b), slope = (z0 - skin.at(x, b - 0.12)) / 0.12, d = y - b;
-    return z0 + fold.lift + slope * d - cfg.arch * d * d;
+    // Tangent from the middle of the nail; the side walls are too steep to extend from.
+    const xs = Math.max(-SIDE, Math.min(SIDE, x)), z0 = skin.at(xs, b), slope = (z0 - skin.at(xs, b - RUN)) / RUN, d = y - b;
+    const side = Math.max(-0.3, skin.at(x, b) - z0);
+    return z0 + side + fold.lift + slope * d - cfg.arch * d * d;
   };
   return (x, y) => {
     const d = Math.max(0, -sdPolygon(outlinePts, x, y));
     const e = smoothstep(0, fold.sinkBand, d);
-    const foldW = 1 - smoothstep(smile(x) - 0.10, smile(x), y);
+    const foldW = 1 - smoothstep(smile(x) - 0.30, smile(x) - 0.12, y);   // lifted clear before it leaves the finger
     const crown = fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x)) * e;
     return zFree(x, y) + crown - (fold.lift + fold.sink) * (1 - e) * foldW;
   };

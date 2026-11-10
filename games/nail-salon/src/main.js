@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/RGBELoader.js';
 import { gpuCaps } from './engine/gpu.js';
 import { NailFrame } from './hand/frame.js';
-import { buildStandinFinger, STANDIN_DEPTH } from './hand/standin.js';
+import { loadHand } from './hand/model.js';
 import { outline, sdPolygon, area, SHAPES } from './hand/outline.js';
 import { OutlineSdf } from './hand/sdf.js';
 import { SkinHeight, makePlateZ, buildPlate } from './hand/plate.js';
@@ -22,6 +22,7 @@ const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) thr
 
 async function boot() {
   const [tuning, handData, cameraData, themes, catalog] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog'].map(json));
+  const handGeo = await loadHand(`./${handData.file}`);
   const fixed = Q.has('scene');                       // fixed test scene: nothing drifts
   const state = {
     scene: Q.get('scene') || 'nail', flip: Q.get('flip') === '1',
@@ -50,21 +51,26 @@ async function boot() {
     return envCache.get(name);
   };
 
-  // ---- the finger: frame, skin, outline, plate ---------------------------------------------
-  const cfg = handData.fingers[0], fold = handData.fold;
+  // ---- the hand: skin, five nail frames, five plates ------------------------------------------
+  // One finger is active (painted, with paint targets and fold shading on the skin). The other
+  // four carry a bare plate until M1.1 gives every finger its own targets.
+  const fold = handData.fold;
+  const activeId = Q.has('finger') ? Number(Q.get('finger')) : handData.active;
+  const cfg = handData.fingers.find((f) => f.finger === activeId) || handData.fingers[0];
   const frame = new NailFrame(cfg, handData.maxFree);
   scene.add(frame.group);
   const uniforms = makeFingerUniforms(frame, fold, tuning);
-  const skinMesh = new THREE.Mesh(buildStandinFinger(frame), makeSkinMaterial(uniforms));
+  uniforms.uProcSkin.value = 0;
+  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(uniforms));
   scene.add(skinMesh);
   scene.updateMatrixWorld(true);
   frame.update();
   const skin = new SkinHeight(frame, [skinMesh]);
   const skinMask = skin.maskTexture();
 
-  const table = new THREE.Mesh(new THREE.CircleGeometry(60, 48), new THREE.MeshStandardMaterial({ roughness: 0.9 }));
-  table.position.z = -(STANDIN_DEPTH + 0.02);
-  frame.group.add(table);
+  const table = new THREE.Mesh(new THREE.CircleGeometry(0.6, 48), new THREE.MeshStandardMaterial({ roughness: 0.9 }));
+  table.position.z = -0.002;
+  scene.add(table);
 
   const sdf = new OutlineSdf(frame.rect);
   const nailMesh = new THREE.Mesh(new THREE.BufferGeometry(), makeNailMaterial(uniforms));
@@ -72,6 +78,26 @@ async function boot() {
   const nail = { info: outline('round', 1), plateZ: (x, y) => 0, shape: 'round', free: 0 };
   const sd = (x, y) => sdPolygon(nail.info.points, x, y);
   const surface = (x, y) => (sd(x, y) <= 0 ? nail.plateZ(x, y) : skin.at(x, y));
+
+  // Bare plates on the other fingers.
+  const blank = new THREE.DataTexture(new Uint8Array(4), 1, 1); blank.needsUpdate = true;
+  const others = handData.fingers.filter((f) => f !== cfg).map((c) => {
+    const fr = new NailFrame(c, handData.maxFree);
+    scene.add(fr.group); fr.group.updateMatrixWorld(true); fr.update();
+    const u = makeFingerUniforms(fr, fold, tuning);
+    u.tPig.value = u.tMat.value = u.tDet.value = blank;
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), makeNailMaterial(u));
+    fr.group.add(mesh);
+    return { cfg: c, frame: fr, uniforms: u, mesh, skin: new SkinHeight(fr, [skinMesh]), sdf: new OutlineSdf(fr.rect) };
+  });
+  function shapeOther(o, shape, free) {
+    const info = outline(shape, o.frame.lengthFor(free));
+    o.sdf.update(renderer, info.points);
+    o.uniforms.tSdf.value = o.sdf.texture;
+    o.uniforms.uCuticleDepth.value = info.cuticleDepth;
+    o.mesh.geometry.dispose();
+    o.mesh.geometry = buildPlate(info, makePlateZ(o.frame, info.points, o.skin, fold, o.cfg), fold, o.frame.bed);
+  }
 
   // ---- paint -------------------------------------------------------------------------------
   const targets = new PaintTargets(1024, caps);
@@ -120,6 +146,7 @@ async function boot() {
     uniforms.uCuticleDepth.value = nail.info.cuticleDepth;
     engine.nailLength = nail.info.length;
     stats.refreshGeometry(renderer);
+    for (const o of others) shapeOther(o, shape, free);
     state.dirty = true;
   }
 
@@ -147,7 +174,7 @@ async function boot() {
     renderer.toneMappingExposure = L.exposure;
     key.color.set(L.key[0]); key.intensity = L.key[1];
     rimL.color.set(L.rim[0]); rimR.color.set(L.rim[1]); rimL.intensity = rimR.intensity = L.rim[2];
-    uniforms.uSkinCol.value.set(theme.skin); uniforms.uBedCol.value.set(theme.nailBed);
+    for (const u of [uniforms, ...others.map((o) => o.uniforms)]) { u.uSkinCol.value.set(theme.skin); u.uBedCol.value.set(theme.nailBed); }
     /** @type {THREE.MeshStandardMaterial} */ (table.material).color.set(theme.table);
   }
 
@@ -156,10 +183,14 @@ async function boot() {
   function placeCamera() {
     const m = frame.group.matrixWorld, sign = state.flip ? 1 : -1;       // default: fingertips down (R11)
     if (state.scene === 'hand') {
+      // The whole hand, seen from over the fingertips (or over the wrist when flipped).
       const h = cameraData.hand, p = h.pitch * Math.PI / 180, yaw = h.yaw * Math.PI / 180;
-      tgt.set(0, h.centre, -0.5);
+      tgt.set(h.target[0], h.target[1], h.target[2]);
       v.set(Math.cos(p) * Math.sin(yaw), -sign * Math.cos(p) * Math.cos(yaw), Math.sin(p)).multiplyScalar(h.distance).add(tgt);
-      up.set(0, 0, 1);
+      camera.position.copy(v); camera.up.set(0, 0, 1); camera.lookAt(tgt);
+      key.position.set(-0.3, 0.6, 0.4).add(camera.position); rimL.position.set(-0.6, 0.2, -0.15); rimR.position.set(0.6, 0.2, -0.15);
+      camera.updateMatrixWorld(true);
+      return;
     } else {
       tgt.set(0, nail.info.length * 0.5, 0);
       v.set(0, tgt.y, cameraData.nail.distance);
@@ -252,7 +283,7 @@ async function boot() {
   // ---- test API (PLAN §14.2): the robot painter and every Playwright test use only this ----
   let clock = 1000;
   const api = {
-    info: () => ({ shape: nail.shape, free: nail.free, length: nail.info.length, bed: frame.bed, rect: frame.rect, caps, load: engine.load, stamps: state.stamps, frames }),
+    info: () => ({ finger: cfg.finger, shape: nail.shape, free: nail.free, length: nail.info.length, bed: frame.bed, rect: frame.rect, caps, load: engine.load, stamps: state.stamps, frames }),
     sd, setShape, setPolish, setRequest, nextFrame,
     three: { scene, camera, renderer, key },
     setTheme: (id) => setTheme(themes.find((t) => t.id === id) || themes[0]),
