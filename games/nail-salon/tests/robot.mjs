@@ -78,7 +78,7 @@ r = await run(async () => {
   for (let pass = 0; pass < 3; pass++) for (let x = x0; x <= x1 + 1e-6; x += rad * 0.5) await S.stroke([[x, y0], [x, y1]], { speed: 0.8 });
   S.setBrush();
   const st = await S.stats();
-  return { st, area: S.area(), rect: (x1 - x0) * (y1 - y0), grown: (x1 - x0 + rad) * (y1 - y0 + rad * 1.35) };
+  return { st, area: S.area(), rect: (x1 - x0) * (y1 - y0), grown: (x1 - x0 + 2 * rad) * (y1 - y0 + rad) };
 });
 const share = r.rect / r.area, grown = r.grown / r.area;
 check('rectangle coverage within 0.02 of its share', Math.abs(r.st.coverage - grown) <= 0.02, `coverage ${f(r.st.coverage)} rect ${f(share)} with brush edge ${f(grown)}`);

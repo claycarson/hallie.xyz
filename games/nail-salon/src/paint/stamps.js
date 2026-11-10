@@ -24,7 +24,7 @@ const FRAG_HEAD = /* glsl */`
 precision highp float;
 uniform sampler2D tSdf, tSkinMask;
 uniform vec4 uRect;
-uniform float uWall, uStreak;
+uniform float uWall, uStreak, uStreakThin, uCentre, uEdge;
 varying vec2 vLocal, vP;
 varying vec4 vParams;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -36,10 +36,17 @@ float noise(vec2 p) {
 float footprint(out float sd) {
   vec2 uv = (vP - uRect.xy) / uRect.zw;
   sd = texture2D(tSdf, uv).r;
-  float soft = 1.0 - smoothstep(0.62, 1.0, length(vLocal));
+  // A flat polish brush: a rounded rectangle, wide across the stroke, with a crisp edge.
+  // Polish goes down as a wet film at once; it is not sprayed on.
+  vec2 q = abs(vLocal);
+  float soft = 1.0 - smoothstep(uEdge, 1.0, pow(q.x * q.x * q.x + q.y * q.y * q.y, 1.0 / 3.0));
+  soft *= 1.0 - smoothstep(0.35, 1.0, q.x);      // feathered along the stroke so stamps never show as bands
   // Bristle lines run along the stroke: noise across the brush, drifting slowly along it.
   float across = vLocal.y * vParams.x;
-  float streak = mix(1.0 - uStreak, 1.0, (0.6 * noise(vec2(across * 120.0, vParams.w * 1.3)) + 0.4 * noise(vec2(across * 310.0, vParams.w * 2.1))));
+  // A fast or dry brush leaves the film thin *between* bristles, not thin all over.
+  float thin = clamp(1.0 - vParams.y / uCentre, 0.0, 1.0);
+  float n = 0.6 * noise(vec2(across * 120.0, vParams.w * 1.3)) + 0.4 * noise(vec2(across * 310.0, vParams.w * 2.1));
+  float streak = mix(1.0 - mix(uStreak, uStreakThin, thin), 1.0, smoothstep(0.25, 0.75, n));
   float wall = mix(1.0, 1.0 - smoothstep(0.0, uWall, sd), vParams.z);     // tipInside: stop at the fold
   float skin = mix(1.0, texture2D(tSkinMask, uv).r, step(0.0, sd));       // no paint in thin air
   return soft * streak * wall * skin;
@@ -74,7 +81,7 @@ export class StampRenderer {
     const shared = this.shared = {
       tSdf: { value: null }, tSkinMask: { value: null },
       uRect: { value: new THREE.Vector4() },
-      uLong: { value: brush.longAxis }, uWall: { value: brush.wall }, uStreak: { value: brush.streak },
+      uLong: { value: brush.longAxis }, uWall: { value: brush.wall }, uStreak: { value: brush.streak }, uStreakThin: { value: brush.streakThin }, uCentre: { value: brush.centreAlpha }, uEdge: { value: brush.edge },
     };
     this.uColor = { value: new THREE.Color() };
     this.uMat = { value: new THREE.Vector3(0, 0.25, 0) };
@@ -90,7 +97,7 @@ export class StampRenderer {
     // channel (iridescence) lerps through the constant blend alpha, set per polish.
     this.material = stampMaterial(shared, /* glsl */`
       uniform vec3 uMat;
-      void main() { float sd; float a = min(1.0, footprint(sd) * vParams.y * 2.5); gl_FragColor = vec4(uMat, a); }`,
+      void main() { float sd; float a = min(1.0, footprint(sd) * vParams.y * 1.6); gl_FragColor = vec4(uMat, a); }`,
       { uniforms: { uMat: this.uMat }, src: THREE.SrcAlphaFactor, dst: THREE.OneMinusSrcAlphaFactor, srcA: THREE.ConstantAlphaFactor, dstA: THREE.OneMinusSrcAlphaFactor });
 
     // Detail: flake offsets and sparkle lerp by stamp alpha; wetness adds up and clamps at 1.
@@ -98,7 +105,7 @@ export class StampRenderer {
     this.detail = stampMaterial(shared, /* glsl */`
       uniform vec3 uFlake;      // cells per nail width, tilt, share that sparkle
       void main() {
-        float sd; float a = min(1.0, footprint(sd) * vParams.y * 2.5);
+        float sd; float a = min(1.0, footprint(sd) * vParams.y * 1.6);
         // Flakes are fixed in the nail's own space, so going over a spot never reshuffles them.
         vec2 g = vP * uFlake.x, cell = floor(g);
         vec2 local = fract(g) - 0.5 - (vec2(hash(cell + 3.1), hash(cell + 9.7)) - 0.5) * 0.4;

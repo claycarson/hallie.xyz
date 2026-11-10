@@ -206,7 +206,8 @@ async function boot() {
   }
 
   const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds });
-  canvas.addEventListener('pointerdown', () => sound.wake());
+  // Sound is off unless asked for (?sound=1): Clay found the synthesized brush bad and optional.
+  if (Q.get('sound') === '1') canvas.addEventListener('pointerdown', () => sound.wake());
 
   // ---- start -------------------------------------------------------------------------------
   setShape(SHAPES.includes(state.shape) ? state.shape : 'round', Number.isFinite(state.free) ? state.free : cfg.naturalFree);

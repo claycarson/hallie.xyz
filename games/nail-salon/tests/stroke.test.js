@@ -9,7 +9,7 @@ const pts = outline('round', 1.03).points;
 const make = () => { const e = new StrokeEngine(brush, (x, y) => sdPolygon(pts, x, y)); e.nailLength = 1.03; return e; };
 const stamp = (e, i) => Array.from(e.stamps.subarray(i * STAMP_FLOATS, (i + 1) * STAMP_FLOATS));
 
-test('stamps are spaced a quarter radius apart whatever the sample rate', () => {
+test('stamps are evenly spaced whatever the sample rate', () => {
   const coarse = make(); coarse.begin(0, 0.1, 0); coarse.move(0, 0.9, 800);
   const fine = make(); fine.begin(0, 0.1, 0); for (let i = 1; i <= 80; i++) fine.move(0, 0.1 + 0.01 * i, i * 10);
   assert.equal(coarse.count, fine.count);

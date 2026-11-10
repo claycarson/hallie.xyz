@@ -2,20 +2,22 @@
   "brush": {
     "radius": 0.24,
     "clearRadius": 0.3,
-    "longAxis": 1.35,
-    "spacing": 0.25,
-    "centreAlpha": 0.3,
+    "longAxis": 0.6,
+    "spacing": 0.125,
+    "centreAlpha": 0.42,
     "speedSlow": 1.5,
     "speedFast": 6,
-    "speedMin": 0.4,
+    "speedMin": 0.38,
     "drainLengths": 5,
     "loadFloor": 0.35,
     "loadKnee": 0.4,
     "tiltUpright": 0.8,
     "tiltFlat": 1.3,
-    "streak": 0.2,
+    "streak": 0.12,
     "wall": 0.02,
-    "snap": 0.08
+    "snap": 0.08,
+    "streakThin": 0.6,
+    "edge": 0.94
   },
   "film": {
     "covered": 0.75,
@@ -30,7 +32,7 @@
   "wet": {
     "drySeconds": 20,
     "dryerSeconds": 2,
-    "level": 0.5
+    "level": 0.12
   },
   "input": {
     "palmSeconds": 60

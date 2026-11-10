@@ -27,7 +27,7 @@ export class Leveler {
           vec4 sum = c; float n = 1.0;
           for (int i = 0; i < 8; i++) {
             float a = float(i) * 0.7853982;
-            vec2 uv = vUv + vec2(cos(a), sin(a)) * uTexel * 2.0;
+            vec2 uv = vUv + vec2(cos(a), sin(a)) * uTexel;
             float w = 1.0 - abs(side - step(texture2D(tSdf, uv).r, 0.0));     // same side of the outline only
             w *= step(0.02, texture2D(tDet, uv).a);                            // and only from wet polish
             sum += texture2D(tPig, uv) * w; n += w;
