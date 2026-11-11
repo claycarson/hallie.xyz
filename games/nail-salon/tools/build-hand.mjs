@@ -136,6 +136,8 @@ const [fine, broad] = relief(positions, indices, [FINE, BROAD]);
 // The fingertip pad below it is left alone. Frames are in final coordinates, so the table
 // shift below is applied to them here.
 const hand = JSON.parse(readFileSync(new URL('../data/hand.json', import.meta.url), 'utf8'));
+const PAD_AHEAD = Number(process.env.PAD_AHEAD ?? 0.12);         // nail widths the pad may reach past the bed, mid-nail
+const SHELF_CURVE = Number(process.env.SHELF_CURVE ?? 0.005);   // metres lower at a full nail width out
 {
   let zMin = Infinity;
   for (let v = 2; v < positions.length; v += 3) if (positions[v] < zMin) zMin = positions[v];
@@ -151,14 +153,28 @@ const hand = JSON.parse(readFileSync(new URL('../data/hand.json', import.meta.ur
     for (let v = 0; v < positions.length; v += 3) {
       const q = [positions[v] - f.origin[0], positions[v + 1] - f.origin[1], positions[v + 2] - f.origin[2]];
       const px = q[0] * s[0] + q[1] * s[1] + q[2] * s[2], py = q[0] * t[0] + q[1] * t[1] + q[2] * t[2], pz = q[0] * n[0] + q[1] * n[1] + q[2] * n[2];
-      if (py <= f.bedLength || py > f.bedLength + f.width || Math.abs(px) > f.width || pz > 0.5 * f.width) continue;
-      const k = sm(f.shelfZ - 0.0006, f.shelfZ - 0.0001, pz) * (1 - sm(0.7 * f.width, f.width, Math.abs(px)));
+      if (py <= f.bedLength || py > f.bedLength + 2 * f.width || Math.abs(px) > 1.4 * f.width || pz > 0.5 * f.width) continue;
+      const shelf = f.shelfZ - SHELF_CURVE * (px / f.width) ** 2;      // the free edge curves down at its sides
+      const k = sm(shelf - 0.0006, shelf - 0.0001, pz) * (1 - sm(1.0 * f.width, 1.4 * f.width, Math.abs(px)));
       if (k <= 0) continue;
       const back = (py - f.bedLength) * 0.97 * k;
       positions[v] -= t[0] * back; positions[v + 1] -= t[1] * back; positions[v + 2] -= t[2] * back;
       moved++;
     }
-    console.log(`finger ${f.finger}: pressed back ${moved} free-edge vertices`);
+    // With the long nail gone, the fingertip pad under it shows. Where the sculpt left it poking
+    // forward at a corner, pull it in to a rounded tip (R ahead of the bed in the middle, none
+    // at the sides). Pad that is already inside is left alone.
+    let rounded = 0;
+    for (let v = 0; v < positions.length; v += 3) {
+      const q = [positions[v] - f.origin[0], positions[v + 1] - f.origin[1], positions[v + 2] - f.origin[2]];
+      const px = (q[0] * s[0] + q[1] * s[1] + q[2] * s[2]) / f.width, py = q[0] * t[0] + q[1] * t[1] + q[2] * t[2], pz = q[0] * n[0] + q[1] * n[1] + q[2] * n[2];
+      const dy = py - f.bedLength, R = PAD_AHEAD * f.width * Math.sqrt(Math.max(0, 1 - (px / 0.7) ** 2));
+      if (dy <= R || pz < -0.006 || Math.abs(px) > 1.2) continue;
+      const back = (dy - R) * 0.85 * (1 - sm(0.005, 0.006, -pz));
+      positions[v] -= t[0] * back; positions[v + 1] -= t[1] * back; positions[v + 2] -= t[2] * back;
+      rounded++;
+    }
+    console.log(`finger ${f.finger}: pressed back ${moved} free-edge vertices, rounded ${rounded} pad vertices`);
   }
 }
 

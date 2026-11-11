@@ -38,6 +38,7 @@
   "input": {
     "palmSeconds": 60
   },
+  "nail": { "gloss": 0.5 },
   "brushModel": {
     "minLeanDeg": 25,
     "scale": 0.82,

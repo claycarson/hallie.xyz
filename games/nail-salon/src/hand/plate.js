@@ -155,7 +155,13 @@ export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
     const e = smoothstep(0, fold.sinkBand, d);
     const foldW = 1 - smoothstep(smile(x) - 0.30, smile(x) - 0.12, y);   // lifted clear before it leaves the finger
     const crown = fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x)) * e;
-    return zFree(x, y) + crown - (fold.lift + fold.sink) * (1 - e) * foldW;
+    const top = zFree(x, y) + crown;
+    // At the outline the edge goes `sink` under the real skin, not the smoothed copy: the smooth
+    // surface rides high where the finger's sides fall away, which left the edge in the air.
+    // Only along the bed: near its end the skin is the fingertip falling away.
+    const base = top - fold.lift - fold.sink, rawW = 1 - smoothstep(smile(x) - 0.5, smile(x) - 0.3, y);
+    const under = base + Math.max(-2 * fold.sink, Math.min(0, skin.at(x, y) - fold.sink - base)) * rawW;
+    return top + (under - top) * (1 - e) * foldW;
   };
   /** The plate's own curve, before its edges dip under the folds. */
   z.shell = (x, y) => zFree(x, y) + fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x));
@@ -169,12 +175,13 @@ for (let t = 0.25; t < 1.001; t += 0.05) RINGS.push(Math.min(1, t));
 /**
  * NailPlate geometry in paint coords: rings from the outline in to a spine, so the mesh edge
  * is the outline exactly. Normals are analytic (from the height function), never averaged.
- * Attribute `paintXY` is the paint-frame position the materials sample with.
+ * Attribute `paintXY` is the paint-frame position the materials sample with; `skirt` marks the
+ * free edge's thickness.
  */
 export function buildPlate(outlineInfo, plateZ, fold, bed) {
   const pts = outlineInfo.points, L = outlineInfo.length, R = RINGS.length;
   const ya = Math.min(0.42, L / 2), yb = Math.max(L - 0.42, L / 2);
-  const nv = N_POINTS * R, pos = [], nor = [], pxy = [], idx = [];
+  const nv = N_POINTS * R, pos = [], nor = [], pxy = [], idx = [], skirt = [];
   const E = 0.004;
   for (let r = 0; r < R; r++) for (let i = 0; i < N_POINTS; i++) {
     const px = pts[2 * i], py = pts[2 * i + 1], t = RINGS[r];
@@ -182,7 +189,7 @@ export function buildPlate(outlineInfo, plateZ, fold, bed) {
     const z = plateZ(x, y);
     const gx = (plateZ(x + E, y) - plateZ(x - E, y)) / (2 * E), gy = (plateZ(x, y + E) - plateZ(x, y - E)) / (2 * E);
     const inv = 1 / Math.hypot(gx, gy, 1);
-    pos.push(x, y, z); nor.push(-gx * inv, -gy * inv, inv); pxy.push(x, y);
+    pos.push(x, y, z); nor.push(-gx * inv, -gy * inv, inv); pxy.push(x, y); skirt.push(0);
   }
   for (let r = 0; r < R - 1; r++) for (let i = 0; i < N_POINTS; i++) {
     const a = r * N_POINTS + i, b = r * N_POINTS + (i + 1) % N_POINTS, c = a + N_POINTS, d = b + N_POINTS;
@@ -190,15 +197,23 @@ export function buildPlate(outlineInfo, plateZ, fold, bed) {
   }
   // Free edge thickness: a skirt hanging from the outline wherever it is past the bed.
   const smileY = (x) => bed - fold.smile * 4 * x * x;
+  // Normals are smooth along the edge (averaged from both neighbouring segments) and lean a
+  // little up toward the top face: one flat normal per quad made every other quad catch the
+  // light, a row of white specks along the tip.
+  const edgeN = (i) => {
+    const a = (i + N_POINTS - 1) % N_POINTS, b = (i + 1) % N_POINTS;
+    const ex = pts[2 * b] - pts[2 * a], ey = pts[2 * b + 1] - pts[2 * a + 1], il = 1 / Math.hypot(ex, ey, 0.35 * Math.hypot(ex, ey));
+    return [ey * il, -ex * il, 0.35 * Math.hypot(ex, ey) * il];
+  };
   let base = nv;
   for (let i = 0; i < N_POINTS; i++) {
     const j = (i + 1) % N_POINTS;
     const xi = pts[2 * i], yi = pts[2 * i + 1], xj = pts[2 * j], yj = pts[2 * j + 1];
     if (yi < smileY(xi) || yj < smileY(xj)) continue;
-    const ex = xj - xi, ey = yj - yi, il = 1 / Math.hypot(ex, ey), nx = ey * il, ny = -ex * il;   // outward
-    const zi = plateZ(xi, yi), zj = plateZ(xj, yj);
+    const zi = plateZ(xi, yi), zj = plateZ(xj, yj), ni = edgeN(i), nj = edgeN(j);
     pos.push(xi, yi, zi, xj, yj, zj, xj, yj, zj - fold.edgeThickness, xi, yi, zi - fold.edgeThickness);
-    for (let k = 0; k < 4; k++) nor.push(nx, ny, 0);
+    nor.push(...ni, ...nj, ...nj, ...ni);
+    skirt.push(1, 1, 1, 1);
     pxy.push(xi, yi, xj, yj, xj, yj, xi, yi);
     idx.push(base, base + 3, base + 2, base, base + 2, base + 1);
     base += 4;
@@ -207,6 +222,7 @@ export function buildPlate(outlineInfo, plateZ, fold, bed) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   geo.setAttribute('paintXY', new THREE.Float32BufferAttribute(pxy, 2));
+  geo.setAttribute('skirt', new THREE.Float32BufferAttribute(skirt, 1));   // 1 on the free edge's thickness
   geo.setIndex(idx);
   return geo;
 }

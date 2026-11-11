@@ -53,8 +53,18 @@ export class BrushModel {
     this.bristles = new THREE.Mesh(fanGeometry(), this.bristleColor); this.bristles.position.y = BRISTLE;
     const fg = new THREE.CylinderGeometry(0.1, 0.095, FERRULE, 28); fg.translate(0, BRISTLE + FERRULE / 2, 0);
     const cg = capGeometry(); cg.translate(0, BRISTLE + FERRULE, 0);
-    this.root.add(this.bristles, new THREE.Mesh(fg, metal), new THREE.Mesh(cg, this.capMat));
+    const ferrule = new THREE.Mesh(fg, metal), cap = new THREE.Mesh(cg, this.capMat);
+    this.root.add(this.bristles, ferrule, cap);
     parent.add(this.root);
+    // Drawn last, over everything: in nail view the brush is always nearer than the hand, but its
+    // bristles dip into the curved plate and the finger (Clay saw it hidden behind the thumb). It
+    // goes in the transparent pass after its shadow, and clears depth first so its own parts still
+    // hide each other.
+    for (const [mesh, order] of [[this.bristles, 21], [ferrule, 22], [cap, 22]]) {
+      const mat = /** @type {THREE.Material} */ (mesh.material);
+      mat.transparent = true; mesh.renderOrder = order;
+    }
+    this.bristles.onBeforeRender = (renderer) => renderer.clearDepth();
 
     const size = 64, px = new Uint8Array(size * size * 4);
     for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
@@ -63,7 +73,7 @@ export class BrushModel {
     }
     const tex = new THREE.DataTexture(px, size, size, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, color: 0x2a1410, transparent: true, depthWrite: false, depthTest: false }));
-    this.shadow.visible = false;
+    this.shadow.visible = false; this.shadow.renderOrder = 20;
     parent.add(this.shadow);
   }
 

@@ -21,6 +21,7 @@ export function makeFingerUniforms(frame, fold, tuning) {
     uLip: { value: new THREE.Vector3(fold.lipStart, fold.lipEnd, fold.lipStrength) },
     uRim: { value: new THREE.Vector2(fold.rimWidth, fold.rimStrength) },
     uSkinFilm: { value: tuning.film.skinFactor },
+    uGloss: { value: tuning.nail?.gloss ?? 1 },
     uWorldToPaint: { value: frame.worldToPaint },
   };
 }
@@ -28,7 +29,7 @@ export function makeFingerUniforms(frame, fold, tuning) {
 const COMMON = /* glsl */`
 uniform sampler2D tSdf, tPig, tMat, tDet;
 uniform vec4 uRect;
-uniform float uBed, uSmile, uCuticleDepth, uSkinFilm;
+uniform float uBed, uSmile, uCuticleDepth, uSkinFilm, uGloss;
 uniform vec2 uLunula;
 uniform vec3 uBedCol, uSkinCol;
 uniform vec2 uGroove, uRim;
@@ -72,7 +73,7 @@ export function makeNailMaterial(uniforms) {
     clearcoat: 1, clearcoatRoughness: 0.03, iridescence: 1, iridescenceIOR: 1.5, iridescenceThicknessRange: [250, 650],
   });
   m.onBeforeCompile = (shader) => inject(shader, uniforms,
-    'attribute vec2 paintXY;\nvarying vec2 vPXY;\nvarying float vSkirt;', 'vPXY = paintXY; vSkirt = 1.0 - step(0.001, abs(normal.z));', {
+    'attribute vec2 paintXY;\nattribute float skirt;\nvarying vec2 vPXY;\nvarying float vSkirt;', 'vPXY = paintXY; vSkirt = skirt;', {
       decl: 'varying vec2 vPXY;\nvarying float vSkirt;\nuniform sampler2D tNrm;\nuniform mat3 normalMatrix;',
       after: {
         color_fragment: /* glsl */`
@@ -80,7 +81,18 @@ export function makeNailMaterial(uniforms) {
           // The free edge's thickness wears the polish on the top face next to it.
           if (vSkirt > 0.5) nlUV = nlUv(vPXY - normalize(vPXY - vec2(0.0, uBed * 0.5)) * 0.05);
           float nlD = max(0.0, -texture2D(tSdf, nlUV).r);          // distance in from the outline
-          vec4 nlPig = texture2D(tPig, nlUV), nlM = texture2D(tMat, nlUV), nlDt = texture2D(tDet, nlUV);
+          // Polish wraps the edge: the last hair of the outline wears the polish from just inside it
+          // (the brush leaves the film thin and patchy right at the edge, and the white free edge
+          // showed through as specks).
+          vec2 nlPaintUV = nlUV;
+          if (nlD < 0.03) {
+            vec2 nlE = vec2(0.01, 0.0);
+            vec2 nlG = vec2(texture2D(tSdf, nlUv(nlP + nlE.xy)).r - texture2D(tSdf, nlUv(nlP - nlE.xy)).r,
+                            texture2D(tSdf, nlUv(nlP + nlE.yx)).r - texture2D(tSdf, nlUv(nlP - nlE.yx)).r);
+            if (dot(nlG, nlG) > 1e-10) nlPaintUV = nlUv(nlP - normalize(nlG) * (0.03 - nlD));
+            if (vSkirt > 0.5) nlPaintUV = nlUV;
+          }
+          vec4 nlPig = texture2D(tPig, nlPaintUV), nlM = texture2D(tMat, nlPaintUV), nlDt = texture2D(tDet, nlPaintUV);
           float nlFilm = clamp(nlPig.a, 0.0, 1.0), nlWet = nlDt.a;
           float nlS = nlSmile(nlP.x), nlFold = nlFoldW(nlP);
           // Bare nail, from the base out: lunula, bed, onychodermal band, free edge.
@@ -121,12 +133,14 @@ export function makeNailMaterial(uniforms) {
           }`,
         lights_physical_fragment: /* glsl */`
           material.clearcoat = max(0.22 * (1.0 - nlFilm), smoothstep(0.2, 0.8, nlFilm) * (1.0 - smoothstep(0.5, 0.7, nlM.g)));
-          material.clearcoat *= 1.0 - nlRimK;
+          material.clearcoat *= (1.0 - nlRimK) * mix(1.0, uGloss, nlFilm);
+          // Polish shine (tuning nail.gloss): the coat's own reflection too, but not a metal's.
+          material.specularColor *= mix(1.0, uGloss, nlFilm * (1.0 - metalnessFactor));
           material.clearcoatRoughness = mix(0.25, 0.10, nlFilm);
           material.iridescence = nlM.a * nlFilm;`,
       },
     });
-  m.customProgramCacheKey = () => 'nail-plate-5';
+  m.customProgramCacheKey = () => 'nail-plate-8';
   return m;
 }
 
