@@ -3,7 +3,9 @@
 //   yaw + x   the finger's centre line (midway between its side walls) runs straight up the frame,
 //   roll      the skin either side of the nail is level (the nail faces the way the finger does),
 //   pitch     the nail bed is level along its length.
-// Usage (with `npm run serve` running): node tools/fit-frames.mjs [--write]
+// Usage (with `npm run serve` running): node tools/fit-frames.mjs [--only <finger>] [--write]
+// A finger with "fitLock" in data/hand.json is skipped: its frame was set by eye against the finger's
+// outline (the ring finger: its folds are centred on the nail but the finger bends away, see notes).
 // Prints before/after numbers; --write saves origin/tipDir/normal into data/hand.json. Rerun
 // tools/build-hand.mjs afterwards (it presses the sculpt's own free edges back using the frames).
 import { webkit } from 'playwright';
@@ -16,6 +18,8 @@ const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`${BASE}?scene=hand`);
 await page.evaluate(() => window.__salon.ready);
+const onlyAt = process.argv.indexOf('--only');
+if (onlyAt > 0) await page.evaluate((n) => { window.__only = n; }, Number(process.argv[onlyAt + 1]));
 if (process.env.TRACE) { page.on('console', (m) => console.log(m.text())); await page.evaluate(() => { window.__trace = 1; }); }
 
 const fitted = await page.evaluate(async () => {
@@ -59,6 +63,8 @@ const fitted = await page.evaluate(async () => {
   const r4 = (v) => Number(v.toFixed(4)), r5 = (v) => Number(v.toFixed(5));
   const out = [];
   for (const cfg0 of hand.fingers) {
+    if (window.__only != null && cfg0.finger !== window.__only) continue;
+    if (cfg0.fitLock) continue;
     let cfg = { ...cfg0 };
     const before = measure(cfg);
     // Four moves (sideways, yaw, pitch, roll) against four measures (centre offset, centre
