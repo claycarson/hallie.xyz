@@ -37,5 +37,20 @@
   },
   "input": {
     "palmSeconds": 60
+  },
+  "brushModel": {
+    "minLeanDeg": 25,
+    "scale": 0.82,
+    "defaultAltitudeDeg": 55,
+    "defaultAzimuthDeg": 45,
+    "hoverGap": 0.16,
+    "splay": 1.45,
+    "squash": 0.82,
+    "bendDeg": 18,
+    "bendSmooth": 0.25,
+    "keepMs": 250,
+    "shadowSize": 0.75,
+    "shadowOffset": [0.04, -0.05],
+    "shadowAlpha": 0.28
   }
 }

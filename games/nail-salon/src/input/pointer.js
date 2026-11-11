@@ -13,6 +13,7 @@ export class PointerInput {
    * @param {import('../paint/stroke.js').StrokeEngine} o.engine
    * @param {number} o.palmSeconds touches don't paint this long after a pen was seen
    * @param {() => boolean} [o.blocked] no stroke may start while this is true (the hand is turning)
+   * @param {(cx: number, cy: number, x: number, y: number, altitude: number | null, azimuth: number | null, touching: boolean) => void} [o.onCursor] where the Pencil is, for the brush model only
    * @param {() => void} [o.onStrokeStart]
    * @param {() => void} [o.onStrokeEnd]
    */
@@ -21,8 +22,9 @@ export class PointerInput {
     this.mode = 'auto';             // auto | pen | finger (Grown-ups "Paint with")
     this.lastPenAt = -Infinity;
     this.activeId = null;
-    this.info = { type: '-', altitude: null, azimuth: null, coalesced: 0, hover: false };
+    this.info = { type: '-', altitude: null, azimuth: null, coalesced: 0, predicted: 0, hover: false };
     this._p = { x: 0, y: 0 };
+    this._c = { x: 0, y: 0 };
 
     const stop = (e) => e.preventDefault();
     for (const type of ['contextmenu', 'selectstart', 'gesturestart']) document.addEventListener(type, stop);
@@ -31,10 +33,18 @@ export class PointerInput {
       this._event('down', e);
     });
     el.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'pen' && e.buttons === 0) { this.info.hover = true; this.lastPenAt = e.timeStamp; return; }
+      if (e.buttons === 0 && e.pointerType !== 'touch') {         // no contact: the brush floats above the nail
+        if (e.pointerType === 'pen') { this.info.hover = true; this.lastPenAt = e.timeStamp; }
+        this.cursor(e, false);
+        return;
+      }
       const list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
       if (list && list.length) { this.info.coalesced = list.length; for (const c of list) this._event('move', c, e.pointerId); }
       else this._event('move', e);
+      if (e.pointerId === this.activeId && e.getPredictedEvents) {      // the brush only: predicted samples never paint
+        const p = e.getPredictedEvents();
+        if (p.length) { this.info.predicted = p.length; this.cursor(p[p.length - 1], true); }
+      }
     });
     for (const type of ['pointerup', 'pointercancel']) el.addEventListener(type, (e) => this._event('up', e));
   }
@@ -45,6 +55,21 @@ export class PointerInput {
     this.handle(kind, e);
     if (kind === 'down') this.activeId = this.o.engine.down ? id : null;
     if (kind === 'up') this.activeId = null;
+  }
+
+  /** Tell the brush model where the Pencil is. Never touches the stroke engine. */
+  cursor(s, touching) {
+    if (!this.o.onCursor || !this.o.toPaint(s.clientX, s.clientY, this._c)) return;
+    this.o.onCursor(s.clientX, s.clientY, this._c.x, this._c.y, this._alt(s, s.pointerType), s.azimuthAngle ?? null, touching);
+  }
+
+  /** Altitude of a pen sample in radians, or null for finger and mouse. */
+  _alt(s, type) {
+    if (type !== 'pen') return null;
+    if (typeof s.altitudeAngle === 'number') return s.altitudeAngle;
+    if (typeof s.tiltX !== 'number') return null;
+    const tx = s.tiltX * Math.PI / 180, ty = s.tiltY * Math.PI / 180;
+    return Math.atan(1 / Math.hypot(Math.tan(tx), Math.tan(ty)));
   }
 
   /** May this pointer paint right now? Pen always; touch not within palmSeconds of a pen. */
@@ -63,19 +88,13 @@ export class PointerInput {
     if (type === 'pen') this.lastPenAt = t;
     if (kind === 'move' && !engine.down) return;
 
-    let altitude = null;
-    if (type === 'pen') {
-      if (typeof s.altitudeAngle === 'number') altitude = s.altitudeAngle;
-      else if (typeof s.tiltX === 'number') {
-        const tx = s.tiltX * Math.PI / 180, ty = s.tiltY * Math.PI / 180;
-        altitude = Math.atan(1 / Math.hypot(Math.tan(tx), Math.tan(ty)));
-      }
-      this.info.altitude = altitude; this.info.azimuth = s.azimuthAngle ?? null;
-    }
+    const altitude = this._alt(s, type);
+    if (type === 'pen') { this.info.altitude = altitude; this.info.azimuth = s.azimuthAngle ?? null; }
     this.info.type = type;
     if (!toPaint(s.clientX, s.clientY, this._p)) { if (engine.down) { engine.end(); this.o.onStrokeEnd?.(); } return; }
     const w = engine.tiltFactor(altitude);
     if (kind === 'down') { engine.begin(this._p.x, this._p.y, t, w); this.o.onStrokeStart?.(); }
     else engine.move(this._p.x, this._p.y, t, w);
+    this.o.onCursor?.(s.clientX, s.clientY, this._p.x, this._p.y, altitude, s.azimuthAngle ?? null, true);
   }
 }

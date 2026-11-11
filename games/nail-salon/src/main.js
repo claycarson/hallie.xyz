@@ -18,6 +18,7 @@ import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
 import { CameraRig } from './scene/rig.js';
+import { BrushModel } from './brush/model.js';
 
 const Q = new URLSearchParams(location.search);
 const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) throw new Error(`data/${name}.json ${r.status}`); return r.json(); });
@@ -118,6 +119,7 @@ async function boot() {
   uniforms.tSdf.value = sdf.texture; uniforms.tPig.value = targets.pigment.texture;
   uniforms.tMat.value = targets.material.texture; uniforms.tDet.value = targets.detail.texture;
 
+  const brushModel = new BrushModel(tuning.brushModel, frame.group);
   const leveler = new Leveler(targets.size, caps.halfFloat, tuning.wet);
   const sound = new BrushSound();
   const wet = { left: 0, acc: 0 };                  // seconds of wetness left; tick remainder
@@ -164,6 +166,7 @@ async function boot() {
     if (!p) throw new Error(`unknown polish: ${id}`);
     state.polish = p;
     stamps.setPolish(new THREE.Color(p.color), catalog.finishes[p.finish]);   // sRGB hex → linear
+    brushModel.setPolish(p.color);
     engine.dip();
   }
 
@@ -184,6 +187,7 @@ async function boot() {
     key.color.set(L.key[0]); key.intensity = L.key[1];
     rimL.color.set(L.rim[0]); rimR.color.set(L.rim[1]); rimL.intensity = rimR.intensity = L.rim[2];
     for (const u of [uniforms, ...others.map((o) => o.uniforms)]) { u.uSkinCol.value.set(theme.skin); u.uBedCol.value.set(theme.nailBed); }
+    brushModel.setCap(theme.brushCap);
     /** @type {THREE.MeshStandardMaterial} */ (table.material).color.set(theme.table);
     /** @type {THREE.MeshPhysicalMaterial} */ (rest.cushion.material).color.set(theme.cushion);
     /** @type {THREE.MeshPhysicalMaterial} */ (rest.cushion.material).sheenColor.set(theme.cushion).lerp(new THREE.Color(0xffffff), 0.5);
@@ -236,7 +240,15 @@ async function boot() {
     return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height];
   }
 
-  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds, blocked: () => rig.turning });
+  const tailAt = { x: 0, y: 0 }, RAD = Math.PI / 180;
+  /** Point the brush model at the Pencil: its tail leans the way the real one does on screen. */
+  function showBrush(cx, cy, x, y, altitude, azimuth, touching) {
+    const M = tuning.brushModel, az = azimuth ?? M.defaultAzimuthDeg * RAD, alt = altitude ?? M.defaultAltitudeDeg * RAD;
+    if (!clientToPaint(cx + Math.cos(az) * 40, cy + Math.sin(az) * 40, tailAt)) return;
+    brushModel.place(x, y, surface(x, y), tailAt.x - x, tailAt.y - y, alt, touching, performance.now());
+  }
+
+  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds, blocked: () => rig.turning, onCursor: showBrush });
   // Sound is off unless asked for (?sound=1): Clay found the synthesized brush bad and optional.
   if (Q.get('sound') === '1') canvas.addEventListener('pointerdown', () => sound.wake());
 
@@ -285,7 +297,7 @@ async function boot() {
     const s = stats.last, f = (n) => n.toFixed(2);
     return [
       `gpu half-float ${caps.halfFloat}  paint ${(targets.bytes / 1048576).toFixed(0)} MB`,
-      `pointer ${input.info.type}  alt ${input.info.altitude == null ? '-' : (input.info.altitude * 57.3).toFixed(0) + '°'}  coalesced ${input.info.coalesced}  hover ${input.info.hover}`,
+      `pointer ${input.info.type}  alt ${input.info.altitude == null ? '-' : (input.info.altitude * 57.3).toFixed(0) + '°'}  coalesced ${input.info.coalesced}  predicted ${input.info.predicted}  hover ${input.info.hover}`,
       `polish ${state.polish.id}  load ${f(engine.load)}  speed ${f(engine.speed)}  stamps ${state.stamps}`,
       `coverage ${f(s.coverage)}  even ${f(s.evenness)}  spill ${s.spill.toFixed(3)}`,
       `colour ${f(s.colorMatch)}  finish ${f(s.finishMatch)}`,
@@ -314,6 +326,7 @@ async function boot() {
     perf.frame += (now - prev - perf.frame) * 0.1;
     const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
     if (rig.update(now)) placeCamera();
+    brushModel.update(now, engine.down, rig.view === 'nail' && !rig.turning);
     frame.update();
     flush();
     if (!fixed) wetAdvance(dt);
@@ -343,6 +356,14 @@ async function boot() {
     /** Press the turn button and wait for the turn to finish. Resolves false if it was refused. */
     async turn() { const ok = turnHand(); while (rig.turning) await nextFrame(); await nextFrame(); return ok; },
     direction: () => ({ up: rig.up, turning: rig.turning, t: rig.t }),
+    brush: () => brushModel.state(),
+    /** One pointer event at a paint-frame point. kind: down | move | up | hover | predict. */
+    pen(kind, x, y, o = {}) {
+      const [clientX, clientY] = paintToClient(x, y), s = { clientX, clientY, pointerType: o.pointerType ?? 'pen', timeStamp: clock += 16, altitudeAngle: o.altitude ?? 50 * Math.PI / 180, azimuthAngle: o.azimuth ?? 0.8 };
+      if (kind === 'hover') input.cursor(s, false); else if (kind === 'predict') input.cursor(s, true); else input.handle(kind, s);
+      return nextFrame();
+    },
+    stampCount: () => state.stamps + engine.count,
     /** Where a paint-frame point is on screen, in CSS pixels. */
     project: (x, y) => paintToClient(x, y),
     clear: () => { targets.clear(renderer); engine.dip(); wet.left = 0; state.dirty = true; return nextFrame(); },
