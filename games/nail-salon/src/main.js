@@ -104,7 +104,7 @@ async function boot() {
     o.mesh.geometry.dispose();
     const z = makePlateZ(o.frame, info.points, o.skin, fold, o.cfg);
     o.mesh.geometry = buildPlate(info, z, fold, o.frame.bed);
-    o.uniforms.tNrm.value = buildPlateNormals(z, o.frame.rect, o.uniforms.tNrm.value);
+    o.uniforms.tNrm.value = buildPlateNormals(z, info.points, info.length, o.frame.rect, o.uniforms.tNrm.value);
   }
 
   // ---- paint -------------------------------------------------------------------------------
@@ -151,7 +151,7 @@ async function boot() {
     nail.plateZ = makePlateZ(frame, nail.info.points, skin, fold, cfg);
     nailMesh.geometry.dispose();
     nailMesh.geometry = buildPlate(nail.info, nail.plateZ, fold, frame.bed);
-    uniforms.tNrm.value = buildPlateNormals(nail.plateZ, frame.rect, uniforms.tNrm.value);
+    uniforms.tNrm.value = buildPlateNormals(nail.plateZ, nail.info.points, nail.info.length, frame.rect, uniforms.tNrm.value);
     uniforms.uCuticleDepth.value = nail.info.cuticleDepth;
     engine.nailLength = nail.info.length;
     stats.refreshGeometry(renderer);

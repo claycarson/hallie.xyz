@@ -14,6 +14,7 @@ export function makeFingerUniforms(frame, fold, tuning) {
     uRect: { value: new THREE.Vector4(r.x0, r.y0, r.w, r.h) },
     uBed: { value: frame.bed },
     uSmile: { value: fold.smile },
+    uLunula: { value: new THREE.Vector2(...(frame.cfg.lunula ?? fold.lunula)) },
     uCuticleDepth: { value: 0.26 },
     uBedCol: { value: srgb('#f1c3b8') }, uSkinCol: { value: srgb('#e9b597') },
     uGroove: { value: new THREE.Vector2(fold.grooveWidth, fold.grooveDark) },
@@ -28,6 +29,7 @@ const COMMON = /* glsl */`
 uniform sampler2D tSdf, tPig, tMat, tDet;
 uniform vec4 uRect;
 uniform float uBed, uSmile, uCuticleDepth, uSkinFilm;
+uniform vec2 uLunula;
 uniform vec3 uBedCol, uSkinCol;
 uniform vec2 uGroove, uRim;
 uniform vec3 uLip;
@@ -75,6 +77,8 @@ export function makeNailMaterial(uniforms) {
       after: {
         color_fragment: /* glsl */`
           vec2 nlP = vPXY, nlUV = nlUv(vPXY);
+          // The free edge's thickness wears the polish on the top face next to it.
+          if (vSkirt > 0.5) nlUV = nlUv(vPXY - normalize(vPXY - vec2(0.0, uBed * 0.5)) * 0.05);
           float nlD = max(0.0, -texture2D(tSdf, nlUV).r);          // distance in from the outline
           vec4 nlPig = texture2D(tPig, nlUV), nlM = texture2D(tMat, nlUV), nlDt = texture2D(tDet, nlUV);
           float nlFilm = clamp(nlPig.a, 0.0, 1.0), nlWet = nlDt.a;
@@ -82,19 +86,21 @@ export function makeNailMaterial(uniforms) {
           // Bare nail, from the base out: lunula, bed, onychodermal band, free edge.
           float nlFree = smoothstep(nlS - 0.015, nlS + 0.03, nlP.y);
           float nlBand = exp(-pow((nlP.y - (nlS - 0.04)) / 0.03, 2.0));
-          float nlLun = 1.0 - smoothstep(0.7, 1.0, length(vec2(nlP.x / 0.27, (nlP.y - 0.03) / 0.21)));
+          float nlLun = 1.0 - smoothstep(0.7, 1.0, length(vec2(nlP.x / uLunula.x, (nlP.y - 0.03) / uLunula.y)));
           vec3 nlBare = uBedCol * mix(1.0, 0.93, smoothstep(0.2, uBed, nlP.y));
           nlBare = mix(nlBare, mix(uBedCol, vec3(1.0, 0.96, 0.93), 0.6), nlLun * 0.6);
           nlBare = mix(nlBare, vec3(0.98, 0.9, 0.86), nlBand * 0.35);
-          nlBare = mix(nlBare, vec3(0.93, 0.89, 0.82), nlFree);
+          nlBare = mix(nlBare, mix(vec3(0.86, 0.72, 0.66), vec3(0.92, 0.86, 0.79), smoothstep(nlS + 0.02, nlS + 0.22, nlP.y)), nlFree);
           nlBare *= 1.0 + 0.03 * (nlNoise(vec2(nlP.x * 60.0, nlP.y * 4.0)) - 0.5);
-          vec3 nlCol = nlBare * (1.0 - nlFilm) + nlPig.rgb;
+          // A near-solid coat hides the nail completely; only a thin coat shows what is under it.
+          float nlHide = smoothstep(0.72, 0.92, nlFilm);
+          vec3 nlCol = mix(nlBare * (1.0 - nlFilm) + nlPig.rgb, nlPig.rgb / max(nlFilm, 1e-3), nlHide);
           // Cuticle rim: thin translucent skin over the plate along the proximal edge only.
           float nlProx = (1.0 - smoothstep(uCuticleDepth * 0.9, uCuticleDepth * 1.6, nlP.y));
           float nlRimK = (1.0 - smoothstep(uRim.x * 0.5, uRim.x * 1.8, nlD)) * nlProx * uRim.y;
           nlCol = mix(nlCol, uSkinCol * 1.06, nlRimK * (1.0 - 0.6 * nlFilm));
           // The folds shade the plate where it tucks under them.
-          nlCol *= mix(1.0, mix(0.62, 1.0, smoothstep(0.0, 0.075, nlD)), nlFold);
+          nlCol *= mix(vec3(1.0), mix(vec3(0.70, 0.54, 0.52), vec3(1.0), smoothstep(0.0, 0.075, nlD)), nlFold);
           diffuseColor.rgb = nlCol;`,
         metalnessmap_fragment: /* glsl */`
           float nlRough = mix(0.38, nlM.g, nlFilm);
@@ -120,7 +126,7 @@ export function makeNailMaterial(uniforms) {
           material.iridescence = nlM.a * nlFilm;`,
       },
     });
-  m.customProgramCacheKey = () => 'nail-plate-2';
+  m.customProgramCacheKey = () => 'nail-plate-5';
   return m;
 }
 

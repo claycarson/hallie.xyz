@@ -150,13 +150,16 @@ export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
     const w = smoothstep(-0.3, 0, d);                      // ease from the bed onto the tangent
     return skin.smooth(x, y) * (1 - w) + ext * w + fold.lift;
   };
-  return (x, y) => {
+  const z = (x, y) => {
     const d = Math.max(0, -sdPolygon(outlinePts, x, y));
     const e = smoothstep(0, fold.sinkBand, d);
     const foldW = 1 - smoothstep(smile(x) - 0.30, smile(x) - 0.12, y);   // lifted clear before it leaves the finger
     const crown = fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x)) * e;
     return zFree(x, y) + crown - (fold.lift + fold.sink) * (1 - e) * foldW;
   };
+  /** The plate's own curve, before its edges dip under the folds. */
+  z.shell = (x, y) => zFree(x, y) + fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x));
+  return z;
 }
 
 // Dense enough that a mirror finish shows no facets from interpolated normals.
@@ -208,16 +211,52 @@ export function buildPlate(outlineInfo, plateZ, fold, bed) {
   return geo;
 }
 
+// Powers of x and y in the smooth shell fitted over the nail.
+const SHELL_X = 5, SHELL_Y = 4;
+
 /**
- * The plate's normals as a texture over the paint frame (paint-space xyz, half-float). The nail
- * material reads its normal from here per pixel: normals interpolated across the plate's long
- * thin triangles showed as hatching in a mirror-like highlight.
+ * A smooth shell z(x, y), a low-order polynomial fitted over the nail's outline. A real plate is
+ * one clean curve: following the sculpt instead bent every highlight round its small bumps.
+ * @returns {{ dx: (x: number, y: number) => number, dy: (x: number, y: number) => number }}
  */
-export function buildPlateNormals(plateZ, rect, old, nx = 192, ny = 320) {
-  const data = new Uint16Array(nx * ny * 4), E = 0.008, h = THREE.DataUtils.toHalfFloat;
+export function fitShell(shell, pts, length) {
+  const inside = [], n = SHELL_X * SHELL_Y, step = 0.02;
+  for (let y = 0; y <= length; y += step) for (let x = -0.6; x <= 0.6; x += step) if (sdPolygon(pts, x, y) < -0.03) inside.push(x, y, shell(x, y));
+  const A = Array.from({ length: n }, () => new Float64Array(n + 1)), row = new Float64Array(n);
+  const terms = (x, u) => { let k = 0, px = 1; for (let a = 0; a < SHELL_X; a++, px *= x) { let py = 1; for (let b = 0; b < SHELL_Y; b++, py *= u) row[k++] = px * py; } };
+  for (let i = 0; i < inside.length; i += 3) {
+    terms(inside[i], inside[i + 1] / length);
+    for (let r = 0; r < n; r++) { for (let c = 0; c < n; c++) A[r][c] += row[r] * row[c]; A[r][n] += row[r] * inside[i + 2]; }
+  }
+  for (let r = 0; r < n; r++) A[r][r] += 1e-9;                  // keeps the solve steady
+  for (let c = 0; c < n; c++) {                                 // Gaussian elimination with pivoting
+    let best = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[best][c])) best = r;
+    [A[c], A[best]] = [A[best], A[c]];
+    for (let r = 0; r < n; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k <= n; k++) A[r][k] -= f * A[c][k]; }
+  }
+  const w = A.map((r, i) => r[n] / r[i]);
+  const grad = (x, y, alongY) => {
+    const u = y / length; let sum = 0, k = 0;
+    for (let a = 0; a < SHELL_X; a++) for (let b = 0; b < SHELL_Y; b++, k++) {
+      const da = alongY ? a : Math.max(0, a - 1), db = alongY ? Math.max(0, b - 1) : b, m = alongY ? b / length : a;
+      if (m) sum += w[k] * m * x ** da * u ** db;
+    }
+    return sum;
+  };
+  return { dx: (x, y) => grad(x, y, false), dy: (x, y) => grad(x, y, true) };
+}
+
+/**
+ * The plate's normals as a texture over the paint frame (paint-space xyz, half-float), read per
+ * pixel by the nail material. They come from the fitted shell, not the sunk mesh, so the plate's
+ * edge doesn't catch the light as a pale line where it dips under the skin.
+ */
+export function buildPlateNormals(plateZ, pts, length, rect, old, nx = 192, ny = 320) {
+  const data = new Uint16Array(nx * ny * 4), h = THREE.DataUtils.toHalfFloat, S = fitShell(plateZ.shell, pts, length);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const x = rect.x0 + rect.w * (i + 0.5) / nx, y = rect.y0 + rect.h * (j + 0.5) / ny;
-    const gx = (plateZ(x + E, y) - plateZ(x - E, y)) / (2 * E), gy = (plateZ(x, y + E) - plateZ(x, y - E)) / (2 * E);
+    const x = Math.max(-0.62, Math.min(0.62, rect.x0 + rect.w * (i + 0.5) / nx)), y = Math.max(0, Math.min(length, rect.y0 + rect.h * (j + 0.5) / ny));
+    const gx = S.dx(x, y), gy = S.dy(x, y);
     const inv = 1 / Math.hypot(gx, gy, 1), k = (j * nx + i) * 4;
     data[k] = h(-gx * inv); data[k + 1] = h(-gy * inv); data[k + 2] = h(inv); data[k + 3] = h(1);
   }
