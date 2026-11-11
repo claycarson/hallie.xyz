@@ -252,7 +252,7 @@ async function boot() {
     brushModel.place(x, y, surface(x, y), tailAt.x - x, tailAt.y - y, alt, touching, performance.now());
   }
 
-  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds, blocked: () => rig.turning, onCursor: showBrush });
+  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, ...tuning.input, blocked: () => rig.turning, onCursor: showBrush });
   // Sound is off unless asked for (?sound=1): Clay found the synthesized brush bad and optional.
   if (Q.get('sound') === '1') canvas.addEventListener('pointerdown', () => sound.wake());
 
@@ -283,7 +283,7 @@ async function boot() {
     if (!bottle) return;
     bottle.classList.remove('dip'); void bottle.offsetWidth; bottle.classList.add('dip');
   }
-  bottle?.addEventListener('pointerdown', (e) => { e.preventDefault(); dipBrush(); });
+  bottle?.addEventListener('pointerdown', (e) => { e.preventDefault(); if (input.touchMayPress(e)) dipBrush(); });
 
   // ---- the turn button: fingertips down ↔ up (PLAN §6, R11) -----------------------------------
   const turnBtn = document.getElementById('turn');
@@ -295,7 +295,11 @@ async function boot() {
     try { localStorage.setItem(HAND_KEY, rig.up ? 'up' : 'down'); } catch { /* storage may be off */ }
     return true;
   }
-  turnBtn?.addEventListener('click', () => turnHand());
+  // A resting palm must not turn the hand: the press is judged at pointerdown, where we know
+  // what touched it.
+  let turnOk = true;
+  turnBtn?.addEventListener('pointerdown', (e) => { turnOk = input.touchMayPress(e); });
+  turnBtn?.addEventListener('click', () => { if (turnOk) turnHand(); turnOk = true; });
 
   if (Q.get('debug') === 'frames') {
     addGizmos(scene, [frame, ...others.map((o) => o.frame)]);

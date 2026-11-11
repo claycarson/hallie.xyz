@@ -14,7 +14,9 @@ Our nail, bare and in red, beside real photos. **Sign off, or say what looks wro
 3. Paint. The brush should follow your tip with no lag, and lean the way the Pencil leans.
 4. Does the polish lay down like a brush, not a spray?
 5. Tilt the Pencil flat, then upright. The stroke gets wider, then narrower.
-6. Rest your palm on the screen while painting. The palm must not paint.
+6. Rest your palm on the screen while painting. The palm must not paint. Also try: palm down
+   *first*, then the Pencil (the Pencil must paint); palm resting near the round button and the
+   bottle (nothing happens).
 7. Paint until the bottle on the right pulses and the stroke goes thin. Tap the bottle. The next
    stroke goes on full again.
 8. Put the Pencil down for a minute, then paint with a finger. It should work.

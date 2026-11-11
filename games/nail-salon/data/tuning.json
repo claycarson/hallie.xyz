@@ -36,7 +36,10 @@
     "level": 0.12
   },
   "input": {
-    "palmSeconds": 60
+    "palmSeconds": 60,
+    "touchDelayMs": 120,
+    "tapMs": 250,
+    "palmSizePx": 40
   },
   "nail": { "gloss": 0.5 },
   "brushModel": {
