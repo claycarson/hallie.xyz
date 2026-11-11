@@ -365,9 +365,8 @@ async function boot() {
   canvas.addEventListener('pointerup', navEnd);
   canvas.addEventListener('pointercancel', navEnd);
 
-  // The mini-map: the five nails where they sit on the hand, filled as they're painted. The nail
-  // being painted has a ring; ones still needing work glow. Tap a nail to go there, the palm for
-  // the whole hand.
+  // The mini-map: the five nails where they sit on the hand, filled as they're painted; the one
+  // being painted is highlighted. Tap a nail to go there, the palm for the whole hand.
   const map = document.getElementById('map');
   function drawMap() {
     if (!map) return;
@@ -377,17 +376,19 @@ async function boot() {
     const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
     const W = 150, H = 120, tipsLow = !rig.up, k = 110 / Math.max(x1 - x0, 1e-6);
     const at = (p) => [20 + (p[0] - x0) * k, (tipsLow ? 76 : 44) + (p[1] - (y0 + y1) / 2) * k];
-    const palmY = tipsLow ? 18 : 102, done = tuning.film.covered;
-    const nails = fingers.map((f, i) => {
-      const [x, y] = at(pts[i]), st = f.stats, cov = Math.min(1, st.coverage / done);
-      const cls = `${f === active ? 'on' : ''} ${st.coverage < done ? 'todo' : ''}`;
-      return `<g class="nail ${cls}" data-finger="${f.id}"><ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="11" ry="14" fill="var(--map, #fff)"/>
-        <ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="11" ry="14" fill="${state.polish.color}" fill-opacity="${cov.toFixed(2)}"/>
-        <ellipse class="ring" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="11" ry="14" fill="none"/></g>`;
-    }).join('');
+    const palmY = tipsLow ? 18 : 102;
     const edge = tipsLow ? palmY + 10 : palmY - 10;
-    const stalks = fingers.map((f, i) => { const [x, y] = at(pts[i]); return `<path d="M${(75 + (x - 75) * 0.6).toFixed(1)} ${edge} L${x.toFixed(1)} ${y.toFixed(1)}"/>`; }).join('');
-    map.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><g class="palm" data-hand="1"><rect x="35" y="${palmY - 16}" width="80" height="32" rx="14"/><g class="stalks">${stalks}</g></g>${nails}</svg>`;
+    // Each nail is a little nail (cuticle curve, rounded tip) at the end of its finger, pointing
+    // away from the palm. The one being painted is bigger and lit in the theme's accent.
+    const NAIL = 'M-7 -7Q0 -10 7 -7L7 3Q7 10 0 10Q-7 10 -7 3Z';
+    const parts = fingers.map((f, i) => {
+      const [x, y] = at(pts[i]), bx = 75 + (x - 75) * 0.6;
+      const deg = Math.atan2(y - edge, x - bx) * 180 / Math.PI - 90, cov = Math.min(1, f.stats.coverage / tuning.film.covered);
+      const nail = `<g class="nail${f === active ? ' on' : ''}" data-finger="${f.id}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${deg.toFixed(1)})${f === active ? ' scale(1.3)' : ''}">
+        <path class="bare" d="${NAIL}"/><path d="${NAIL}" fill="${state.polish.color}" fill-opacity="${cov.toFixed(2)}"/><path class="edge" d="${NAIL}"/></g>`;
+      return { stalk: `<path d="M${bx.toFixed(1)} ${edge} L${x.toFixed(1)} ${y.toFixed(1)}"/>`, nail };
+    });
+    map.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><g class="palm" data-hand="1"><rect x="35" y="${palmY - 16}" width="80" height="32" rx="14"/><g class="stalks">${parts.map((p) => p.stalk).join('')}</g></g>${parts.map((p) => p.nail).join('')}</svg>`;
   }
   map?.addEventListener('pointerdown', (e) => {
     if (!input.touchMayPress(e)) return;

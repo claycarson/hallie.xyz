@@ -1,6 +1,10 @@
-// M0.8: the hand turns without touching the paint, and every nail is upright and the same size
-// in both directions. Needs `npm run serve` (port 8813).
+// M0.8: the hand turns without touching the paint, and every nail is upright (or leans exactly as
+// camera.json's per-finger roll asks, for a finger that bends away from its nail) and the same
+// size in both directions. Needs `npm run serve` (port 8813).
 import { webkit } from 'playwright';
+import { readFileSync } from 'node:fs';
+
+const CAM = JSON.parse(readFileSync(new URL('../data/camera.json', import.meta.url), 'utf8'));
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8813/';
 const browser = await webkit.launch();
@@ -19,9 +23,11 @@ for (const flip of [0, 1]) for (const finger of [0, 1, 2, 3, 4]) {
     const S = window.__salon, L = S.info().length;
     return { base: S.project(0, 0), tip: S.project(0, L), left: S.project(-0.4, L / 2), right: S.project(0.4, L / 2) };
   });
-  const lean = Math.abs(r.base[0] - r.tip[0]), tipBelow = r.tip[1] > r.base[1], width = Math.hypot(r.right[0] - r.left[0], r.right[1] - r.left[1]) / 0.8;
+  const tipBelow = r.tip[1] > r.base[1], width = Math.hypot(r.right[0] - r.left[0], r.right[1] - r.left[1]) / 0.8;
+  const angle = Math.abs(Math.atan2(r.tip[0] - r.base[0], r.tip[1] - r.base[1]) * 180 / Math.PI), lean = Math.min(angle, 180 - angle);
+  const want = Math.abs(CAM.fingers[flip ? 'up' : 'down'][finger].roll ?? 0);
   widths.push(width);
-  check(`finger ${finger} ${flip ? 'tips up' : 'tips down'}: upright`, lean < 4 && tipBelow === !flip, `lean ${lean.toFixed(1)} px, width ${width.toFixed(0)} px`);
+  check(`finger ${finger} ${flip ? 'tips up' : 'tips down'}: upright`, Math.abs(lean - want) < 0.8 && tipBelow === !flip, `lean ${lean.toFixed(1)}° (asked ${want}°), width ${width.toFixed(0)} px`);
 }
 check('same nail width on screen, all fingers, both ways', Math.max(...widths) / Math.min(...widths) < 1.05, `${Math.min(...widths).toFixed(0)}–${Math.max(...widths).toFixed(0)} px`);
 

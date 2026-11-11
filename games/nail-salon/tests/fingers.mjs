@@ -89,8 +89,8 @@ const r = await page.evaluate(async () => {
   out.swipeOnNail = { stamps: S.stampCount() - st0, stayed: S.info().finger === f0 };
 
   // Mini-map nail tap.
-  const dot = document.querySelector(`#map [data-finger="${out.order[2]}"] ellipse`).getBoundingClientRect();
-  tap(document.querySelector(`#map [data-finger="${out.order[2]}"] ellipse`), dot.x + dot.width / 2, dot.y + dot.height / 2); await settle();
+  const dot = document.querySelector(`#map [data-finger="${out.order[2]}"] path`).getBoundingClientRect();
+  tap(document.querySelector(`#map [data-finger="${out.order[2]}"] path`), dot.x + dot.width / 2, dot.y + dot.height / 2); await settle();
   out.mapTap = S.info().finger === out.order[2];
 
   // Visiting without painting leaves a nail exactly as it was (no copy down, so no softening).

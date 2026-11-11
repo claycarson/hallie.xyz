@@ -47,11 +47,11 @@
   #map .palm { fill: var(--map, #fff); opacity: .85; cursor: pointer; }
   #map .stalks path { stroke: var(--map, #fff); stroke-width: 16; stroke-linecap: round; fill: none; }
   #map .nail { cursor: pointer; }
-  #map .ring { stroke: #fff; stroke-width: 2; }
-  #map .nail.on .ring { stroke: var(--accent, #c9897a); stroke-width: 4; }
-  #map .nail.todo:not(.on) .ring { animation: map-glow 1.6s ease-in-out infinite; }
-  @keyframes map-glow { 50% { stroke: var(--accent, #c9897a); stroke-width: 4; } }
-  @media (prefers-reduced-motion: reduce) { #map .nail.todo .ring { animation: none; } }
+  #map .nail .bare { fill: #f6e2dc; }
+  #map .nail .edge { fill: none; stroke: rgba(0, 0, 0, .12); stroke-width: 1; }
+  #map .nail.on { filter: drop-shadow(0 0 4px var(--accent, #c9897a)); }
+  #map .nail.on .bare { fill: #fff; }
+  #map .nail.on .edge { stroke: var(--accent, #c9897a); stroke-width: 2.5; }
   /* ?debug=frames */
   #frames { position: fixed; left: 8px; bottom: 8px; z-index: 10; padding: 8px 10px; width: 250px; border-radius: 10px;
             background: rgba(20, 16, 28, .78); color: #e9f3ff; font: 11px/1.35 ui-monospace, Menlo, monospace; }

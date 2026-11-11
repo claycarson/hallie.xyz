@@ -4,8 +4,9 @@
   "glideMs": 600,
   "nail": { "distance": 7.2, "centre": 0.5, "x": 0, "roll": 0 },
   "fingers": {
-    "down": [{}, {}, {}, {}, {}],
-    "up": [{}, {}, {}, {}, {}]
+    "note": "roll: a finger whose visible part bends away from its nail (the ring finger, 12.5°) is turned 60% of the way toward the finger, so neither looks crooked. Angles from the finger centre line behind the nail.",
+    "down": [{"roll": -1.8}, {}, {}, {"roll": -7.5}, {"roll": -2.8}],
+    "up": [{"roll": -1.8}, {}, {}, {"roll": -7.5}, {"roll": -2.8}]
   },
   "hand": {
     "down": { "target": [-0.008, 0.045, 0.025], "distance": 0.5, "pitch": 50, "yaw": 0 },
