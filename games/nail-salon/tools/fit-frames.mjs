@@ -1,11 +1,13 @@
 // Square each nail frame up with its finger (PLAN §3.3). Measures the sculpt under every frame
 // with the game's own SkinHeight and corrects, a few rounds each:
-//   yaw + x   the finger's centre line (midway between its side walls) runs straight up the frame,
+//   yaw + x   the nail runs straight down the middle of the finger you SEE: the centre line of the
+//             finger's outline, from 1.6 nail widths behind the cuticle to 60% along the bed, runs
+//             up the frame's y axis through x = 0. (Until 2026-11-11 this used the sculpt's nail
+//             folds, which on this model are turned up to 13° from the finger: Clay saw nails
+//             not aligned with their fingers.)
 //   roll      the skin either side of the nail is level (the nail faces the way the finger does),
 //   pitch     the nail bed is level along its length.
 // Usage (with `npm run serve` running): node tools/fit-frames.mjs [--only <finger>] [--write]
-// A finger with "fitLock" in data/hand.json is skipped: its frame was set by eye against the finger's
-// outline (the ring finger: its folds are centred on the nail but the finger bends away, see notes).
 // Prints before/after numbers; --write saves origin/tipDir/normal into data/hand.json. Rerun
 // tools/build-hand.mjs afterwards (it presses the sculpt's own free edges back using the frames).
 import { webkit } from 'playwright';
@@ -48,23 +50,52 @@ const fitted = await page.evaluate(async () => {
       const l = wall(-1), r = wall(1);
       if (Number.isFinite(l) && Number.isFinite(r)) rows.push({ y, m: (l + r) / 2, half: (r - l) / 2 });
     }
-    // Centre line m = a + b·y, least squares.
-    const n = rows.length, sy = rows.reduce((s, q) => s + q.y, 0), sm = rows.reduce((s, q) => s + q.m, 0);
-    const syy = rows.reduce((s, q) => s + q.y * q.y, 0), sym = rows.reduce((s, q) => s + q.y * q.m, 0);
-    const b = (n * sym - sy * sm) / (n * syy - sy * sy), a = (sm - b * sy) / n;
+    // Fold centre line m = a + b·y, least squares (used for the tilts below).
+    const line = (rs) => {
+      const n = rs.length, sy = rs.reduce((s, q) => s + q.y, 0), sm = rs.reduce((s, q) => s + q.m, 0);
+      const syy = rs.reduce((s, q) => s + q.y * q.y, 0), sym = rs.reduce((s, q) => s + q.y * q.m, 0);
+      const b = (n * sym - sy * sm) / (n * syy - sy * sy);
+      return [(sm - b * sy) / n, b];
+    };
+    const n = rows.length, [a, b] = line(rows);
     const half = rows.reduce((s, q) => s + q.half, 0) / n;
+    // The finger's outline seen down the nail normal, in a wide frame, its own finger only (grown
+    // out from the middle). The skin mask is read bilinearly and the edge taken at 0.5, so the
+    // outline moves smoothly as the frame turns.
+    const wide = new NailFrame(cfg, hand.maxFree);
+    wide.update();
+    wide.rect = { x0: -1.6, y0: -2.0, w: 3.2, h: 2.0 + bed };
+    const so = new SkinHeight(wide, [skin]), R = wide.rect;
+    const cover = (x, y) => {
+      const u = (x - R.x0) / R.w * (so.nx - 1), v = (y - R.y0) / R.h * (so.ny - 1), i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j;
+      const g = (ii, jj) => (ii < 0 || jj < 0 || ii >= so.nx || jj >= so.ny ? 0 : so.valid[jj * so.nx + ii]);
+      return (g(i, j) * (1 - fu) + g(i + 1, j) * fu) * (1 - fv) + (g(i, j + 1) * (1 - fu) + g(i + 1, j + 1) * fu) * fv;
+    };
+    const outline = [];
+    for (let y = -1.6; y <= 0.6 * bed + 1e-9; y += 0.05) {
+      const edge = (dir) => {
+        for (let x = 0; Math.abs(x) < 1.55; x += dir * 0.01) {
+          const c0 = cover(x, y) - 0.5, c1 = cover(x + dir * 0.01, y) - 0.5;
+          if (c0 > 0 && c1 <= 0) return x + dir * 0.01 * c0 / (c0 - c1);
+        }
+        return NaN;
+      };
+      if (cover(0, y) < 0.5) continue;
+      const l = edge(-1), r = edge(1);
+      if (Number.isFinite(l) && Number.isFinite(r)) outline.push({ y, m: (l + r) / 2 });
+    }
+    const [oa, ob] = line(outline);
     // Across: skin height a little inside each wall, averaged along the bed.
     let roll = 0;
     for (const q of rows) roll += (sh.smooth(q.m + 0.3, q.y) - sh.smooth(q.m - 0.3, q.y)) / 0.6 / n;
     const pitch = (sh.smooth(a + b * 0.8 * bed, 0.8 * bed) - sh.smooth(a + b * 0.3 * bed, 0.3 * bed)) / (0.5 * bed);
-    return { a, b, roll, pitch, half, z: sh.smooth(a + b * 0.5 * bed, 0.5 * bed) };
+    return { a, b, roll, pitch, half, z: sh.smooth(a + b * 0.5 * bed, 0.5 * bed), oc: oa + ob * 0.5 * bed, ob };
   }
 
   const r4 = (v) => Number(v.toFixed(4)), r5 = (v) => Number(v.toFixed(5));
   const out = [];
   for (const cfg0 of hand.fingers) {
     if (window.__only != null && cfg0.finger !== window.__only) continue;
-    if (cfg0.fitLock) continue;
     let cfg = { ...cfg0 };
     const before = measure(cfg);
     // Four moves (sideways, yaw, pitch, roll) against four measures (centre offset, centre
@@ -79,7 +110,7 @@ const fitted = await page.evaluate(async () => {
       nrm.applyAxisAngle(tip, roll);
       return { ...c, origin: o.toArray(), tipDir: tip.toArray(), normal: nrm.toArray() };
     };
-    const res = (m) => [m.a, m.b, m.pitch, m.roll];
+    const res = (m) => [m.oc, m.ob, m.pitch, m.roll];      // outline centre at mid-nail, outline slope, tilts
     const EPS = [0.02, 0.02, 0.02, 0.02];
     for (let round = 0; round < 6; round++) {
       const r0 = res(measure(cfg));
@@ -110,7 +141,7 @@ await browser.close();
 
 const f2 = (v) => v.toFixed(3);
 for (const f of fitted) {
-  const s = (m) => `centre ${f2(m.a)} + ${f2(m.b)}·y  tilt across ${f2(m.roll)}  along ${f2(m.pitch)}  finger half-width ${f2(m.half)}`;
+  const s = (m) => `finger outline ${f2(m.oc)} off, ${(Math.atan(m.ob) * 57.3).toFixed(1)}° off  folds ${f2(m.a)} + ${f2(m.b)}·y  tilt across ${f2(m.roll)}  along ${f2(m.pitch)}  finger half-width ${f2(m.half)}`;
   console.log(`finger ${f.finger}: turned tip ${f.turned.tipDeg.toFixed(1)}°, normal ${f.turned.normalDeg.toFixed(1)}°, origin ${f.turned.movedMm.toFixed(2)} mm`);
   console.log(`  before ${s(f.before)}\n  after  ${s(f.after)}`);
 }

@@ -138,6 +138,9 @@ const [fine, broad] = relief(positions, indices, [FINE, BROAD]);
 const hand = JSON.parse(readFileSync(new URL('../data/hand.json', import.meta.url), 'utf8'));
 const PAD_AHEAD = Number(process.env.PAD_AHEAD ?? 0.12);         // nail widths the pad may reach past the bed, mid-nail
 const SHELF_CURVE = Number(process.env.SHELF_CURVE ?? 0.005);   // metres lower at a full nail width out
+const LEDGE_X = Number(process.env.LEDGE_X ?? 0.47);   // nail widths: raised nail past this is slid in to it
+const LEDGE_Z = Number(process.env.LEDGE_Z ?? -0.45);   // nail widths: only material higher than this counts as the sculpt's nail
+const SIDE_FADE = (process.env.SIDE_FADE ?? '0.55,0.8').split(',').map(Number);   // nail widths from the centre line: edits fade out across this band
 {
   let zMin = Infinity;
   for (let v = 2; v < positions.length; v += 3) if (positions[v] < zMin) zMin = positions[v];
@@ -155,7 +158,9 @@ const SHELF_CURVE = Number(process.env.SHELF_CURVE ?? 0.005);   // metres lower 
       const px = q[0] * s[0] + q[1] * s[1] + q[2] * s[2], py = q[0] * t[0] + q[1] * t[1] + q[2] * t[2], pz = q[0] * n[0] + q[1] * n[1] + q[2] * n[2];
       if (py <= f.bedLength || py > f.bedLength + 2 * f.width || Math.abs(px) > 1.4 * f.width || pz > 0.5 * f.width) continue;
       const shelf = f.shelfZ - SHELF_CURVE * (px / f.width) ** 2;      // the free edge curves down at its sides
-      const k = sm(shelf - 0.0006, shelf - 0.0001, pz) * (1 - sm(1.0 * f.width, 1.4 * f.width, Math.abs(px)));
+      // Only the nail's own width: pressing the finger's sides back along the nail squashed them into
+      // a straight ridge beside the nail (Clay: "made up finger").
+      const k = sm(shelf - 0.0006, shelf - 0.0001, pz) * (1 - sm(SIDE_FADE[0] * f.width, SIDE_FADE[1] * f.width, Math.abs(px)));
       if (k <= 0) continue;
       const back = (py - f.bedLength) * 0.97 * k;
       positions[v] -= t[0] * back; positions[v + 1] -= t[1] * back; positions[v + 2] -= t[2] * back;
@@ -170,11 +175,30 @@ const SHELF_CURVE = Number(process.env.SHELF_CURVE ?? 0.005);   // metres lower 
       const px = (q[0] * s[0] + q[1] * s[1] + q[2] * s[2]) / f.width, py = q[0] * t[0] + q[1] * t[1] + q[2] * t[2], pz = q[0] * n[0] + q[1] * n[1] + q[2] * n[2];
       const dy = py - f.bedLength, R = PAD_AHEAD * f.width * Math.sqrt(Math.max(0, 1 - (px / 0.7) ** 2));
       if (dy <= R || pz < -0.006 || Math.abs(px) > 1.2) continue;
-      const back = (dy - R) * 0.85 * (1 - sm(0.005, 0.006, -pz));
+      const back = (dy - R) * 0.85 * (1 - sm(0.005, 0.006, -pz)) * (1 - sm(SIDE_FADE[0], SIDE_FADE[1], Math.abs(px)));   // px is in widths here
       positions[v] -= t[0] * back; positions[v + 1] -= t[1] * back; positions[v + 2] -= t[2] * back;
       rounded++;
     }
-    console.log(`finger ${f.finger}: pressed back ${moved} free-edge vertices, rounded ${rounded} pad vertices`);
+    // The sculpt's own nail is not always where ours is: frames follow the finger you see (see
+    // fit-frames), and on this model the ring finger's sculpted nail sits off to one side. Toward the
+    // tip its raised edge then shows beside our plate as a ledge with a hard straight edge (Clay:
+    // "made up finger hiding"). Slide that raised nail material in under our plate, only on the sides
+    // listed in the finger's "tuckSides" (data/hand.json, -1 / 1 = paint x): at the same height the
+    // other side is real finger, and squashing it left a notch. Skin lower than LEDGE_Z and the
+    // cuticle end of the bed (the side folds) are untouched.
+    let tucked = 0;
+    for (let v = 0; v < positions.length; v += 3) {
+      const q = [positions[v] - f.origin[0], positions[v + 1] - f.origin[1], positions[v + 2] - f.origin[2]];
+      const px = (q[0] * s[0] + q[1] * s[1] + q[2] * s[2]) / f.width, py = (q[0] * t[0] + q[1] * t[1] + q[2] * t[2]) / f.width, pz = (q[0] * n[0] + q[1] * n[1] + q[2] * n[2]) / f.width;
+      const bed = f.bedLength / f.width, ax = Math.abs(px);
+      if (!f.tuckSides || !f.tuckSides.includes(Math.sign(px)) || ax <= LEDGE_X || ax > 0.85 || py < 0.5 * bed || py > bed + 0.4) continue;
+      const k = sm(0.5 * bed, 0.7 * bed, py) * sm(LEDGE_Z - 0.06, LEDGE_Z, pz);
+      if (k <= 0) continue;
+      const shift = (ax - LEDGE_X) * k * Math.sign(px) * f.width;
+      positions[v] -= s[0] * shift; positions[v + 1] -= s[1] * shift; positions[v + 2] -= s[2] * shift;
+      tucked++;
+    }
+    console.log(`finger ${f.finger}: pressed back ${moved} free-edge vertices, rounded ${rounded} pad vertices, tucked ${tucked} nail-ledge vertices`);
   }
 }
 

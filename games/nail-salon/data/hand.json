@@ -15,15 +15,15 @@
     "rimWidth": 0.02, "rimStrength": 0.6
   },
   "fingers": [
-    { "finger": 0, "bone": null, "origin": [0.03931, 0.0514, 0.00918], "tipDir": [-0.0523, 0.9225, -0.3824], "normal": [0.9877, 0.1042, 0.1164],
+    { "finger": 0, "bone": null, "origin": [0.03927, 0.05149, 0.00942], "tipDir": [-0.0416, 0.8953, -0.4435], "normal": [0.9864, 0.1075, 0.1244],
       "lunula": [0.4, 0.31], "width": 0.011, "bedLength": 0.01103, "shelfZ": -0.00144, "naturalFree": 0.25, "dome": 0, "arch": 0.08 },
-    { "finger": 1, "bone": null, "origin": [0.00861, 0.10798, 0.03838], "tipDir": [-0.1264, 0.904, -0.4084], "normal": [0.0814, 0.4198, 0.904],
+    { "finger": 1, "bone": null, "origin": [0.00845, 0.10797, 0.0384], "tipDir": [-0.1048, 0.9052, -0.4119], "normal": [0.1018, 0.4218, 0.901],
       "lunula": [0.33, 0.24], "width": 0.009, "bedLength": 0.0113, "shelfZ": -0.00158, "naturalFree": 0.25, "dome": 0, "arch": 0.08 },
-    { "finger": 2, "bone": null, "origin": [-0.01498, 0.10867, 0.04505], "tipDir": [-0.1833, 0.8993, -0.397], "normal": [0.1371, 0.4233, 0.8955],
+    { "finger": 2, "bone": null, "origin": [-0.01531, 0.10863, 0.04512], "tipDir": [-0.1364, 0.9034, -0.4066], "normal": [0.1266, 0.4229, 0.8973],
       "lunula": [0.3, 0.22], "width": 0.0083, "bedLength": 0.01187, "shelfZ": -0.0018, "naturalFree": 0.25, "dome": 0, "arch": 0.08 },
-    { "finger": 3, "bone": null, "origin": [-0.03677, 0.0976, 0.0419], "tipDir": [-0.2939, 0.9182, -0.2656], "normal": [0.0405, 0.2896, 0.9563],
-      "width": 0.0083, "bedLength": 0.01055, "shelfZ": -0.0024, "naturalFree": 0.25, "dome": 0, "arch": 0.08, "fitLock": true },
-    { "finger": 4, "bone": null, "origin": [-0.05288, 0.06953, 0.03421], "tipDir": [-0.2758, 0.8995, -0.3388], "normal": [-0.3646, 0.2282, 0.9027],
+    { "finger": 3, "bone": null, "origin": [-0.03769, 0.09736, 0.04201], "tipDir": [-0.1606, 0.9472, -0.2774], "normal": [-0.0021, 0.2807, 0.9598],
+      "width": 0.0083, "bedLength": 0.01055, "shelfZ": -0.0024, "naturalFree": 0.25, "dome": 0, "arch": 0.08, "tuckSides": [-1] },
+    { "finger": 4, "bone": null, "origin": [-0.05324, 0.06945, 0.03416], "tipDir": [-0.1993, 0.9292, -0.3113], "normal": [-0.3751, 0.2211, 0.9002],
       "width": 0.007, "bedLength": 0.00946, "shelfZ": -0.00128, "naturalFree": 0.25, "dome": 0, "arch": 0.08 }
   ]
 }

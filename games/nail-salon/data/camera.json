@@ -4,9 +4,9 @@
   "glideMs": 600,
   "nail": { "distance": 7.2, "centre": 0.5, "x": 0, "roll": 0 },
   "fingers": {
-    "note": "roll: a finger whose visible part bends away from its nail is turned toward the finger so it runs straight up the screen. The ring finger -7.5 was checked again after its nail was turned 5.5° to sit inside the finger (2026-11-11).",
-    "down": [{"roll": -1.8}, {}, {}, {"roll": -7.5}, {"roll": -2.8}],
-    "up": [{"roll": -1.8}, {}, {}, {"roll": -7.5}, {"roll": -2.8}]
+    "note": "roll (degrees) per finger turns its nail view. All 0 since 2026-11-11: each nail frame now runs along its finger's outline (tools/fit-frames.mjs), so the finger is straight up the screen without it.",
+    "down": [{}, {}, {}, {}, {}],
+    "up": [{}, {}, {}, {}, {}]
   },
   "hand": {
     "down": { "target": [-0.008, 0.045, 0.025], "distance": 0.5, "pitch": 50, "yaw": 0 },
