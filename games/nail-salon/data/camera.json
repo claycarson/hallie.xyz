@@ -1,5 +1,13 @@
 {
   "fov": 20,
-  "nail": { "distance": 7.2, "centre": 0.42 },
-  "hand": { "target": [-0.008, 0.045, 0.025], "distance": 0.5, "pitch": 50, "yaw": 0 }
+  "turnMs": 500,
+  "nail": { "distance": 7.2, "centre": 0.5, "x": 0, "roll": 0 },
+  "fingers": {
+    "down": [{}, {}, {}, {}, {}],
+    "up": [{}, {}, {}, {}, {}]
+  },
+  "hand": {
+    "down": { "target": [-0.008, 0.045, 0.025], "distance": 0.5, "pitch": 50, "yaw": 0 },
+    "up": { "target": [-0.008, 0.062, 0.025], "distance": 0.5, "pitch": 68, "yaw": 0 }
+  }
 }

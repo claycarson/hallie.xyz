@@ -23,4 +23,11 @@ for (const [name, query] of jobs) {
   await page.screenshot({ path: new URL(`./shots/${name}.png`, import.meta.url).pathname, clip });
   console.log(name, JSON.stringify(await page.evaluate(() => window.__salon.info())));
 }
+// SHEET=name COLS=5: tile this run's shots into tests/shots/name.png to look at them together.
+if (process.env.SHEET) {
+  const cols = Number(process.env.COLS || 5), w = 460, h = Math.round(w * 820 / 1180);
+  const sheet = await browser.newPage({ viewport: { width: w * cols, height: h * Math.ceil(jobs.length / cols) } });
+  await sheet.setContent(`<body style="margin:0;display:grid;grid-template-columns:repeat(${cols},${w}px);font:12px Helvetica">${jobs.map(([n]) => `<div style="position:relative;height:${h}px"><img src="${BASE}tests/shots/${n}.png?${Date.now()}" width="${w}"><b style="position:absolute;left:4px;top:2px">${n}</b></div>`).join('')}</body>`, { waitUntil: 'networkidle' });
+  await sheet.screenshot({ path: new URL(`./shots/${process.env.SHEET}.png`, import.meta.url).pathname });
+}
 await browser.close();

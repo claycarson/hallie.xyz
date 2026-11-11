@@ -12,6 +12,7 @@ export class PointerInput {
    * @param {(cx: number, cy: number, out: {x: number, y: number}) => boolean} o.toPaint client → paint coords
    * @param {import('../paint/stroke.js').StrokeEngine} o.engine
    * @param {number} o.palmSeconds touches don't paint this long after a pen was seen
+   * @param {() => boolean} [o.blocked] no stroke may start while this is true (the hand is turning)
    * @param {() => void} [o.onStrokeStart]
    * @param {() => void} [o.onStrokeEnd]
    */
@@ -25,7 +26,10 @@ export class PointerInput {
 
     const stop = (e) => e.preventDefault();
     for (const type of ['contextmenu', 'selectstart', 'gesturestart']) document.addEventListener(type, stop);
-    el.addEventListener('pointerdown', (e) => { el.setPointerCapture?.(e.pointerId); this._event('down', e); });
+    el.addEventListener('pointerdown', (e) => {
+      try { el.setPointerCapture?.(e.pointerId); } catch { /* the pointer can already be gone */ }
+      this._event('down', e);
+    });
     el.addEventListener('pointermove', (e) => {
       if (e.pointerType === 'pen' && e.buttons === 0) { this.info.hover = true; this.lastPenAt = e.timeStamp; return; }
       const list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
@@ -55,7 +59,7 @@ export class PointerInput {
   handle(kind, s) {
     const { engine, toPaint } = this.o, t = s.timeStamp, type = s.pointerType || 'mouse';
     if (kind === 'up') { if (engine.down) { engine.end(); this.o.onStrokeEnd?.(); } return; }
-    if (kind === 'down' && !this.canPaint(type, t)) return;
+    if (kind === 'down' && (this.o.blocked?.() || !this.canPaint(type, t))) return;
     if (type === 'pen') this.lastPenAt = t;
     if (kind === 'move' && !engine.down) return;
 

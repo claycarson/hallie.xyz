@@ -14,6 +14,8 @@
            background: rgba(20, 16, 28, .78); color: #e9f3ff; font: 11px/1.35 ui-monospace, Menlo, monospace; max-width: 300px; }
   #debug pre { margin: 0 0 6px; white-space: pre-wrap; }
   #debug button { font: inherit; padding: 4px 8px; border-radius: 6px; border: 0; }
+  #debug nav { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  #debug a { color: inherit; padding: 4px 7px; border-radius: 6px; background: rgba(255, 255, 255, .16); text-decoration: none; }
   /* The polish bottle: tap it to dip the brush. The colour inside drops as the brush runs low. */
   #bottle { position: fixed; right: max(18px, env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); z-index: 5;
             width: 92px; height: 150px; padding: 0; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -24,6 +26,13 @@
   @keyframes bottle-pulse { 50% { transform: scale(1.08); } }
   @keyframes bottle-dip { 40% { transform: translateY(7px) scale(.96); } }
   @media (prefers-reduced-motion: reduce) { #bottle.low svg, #bottle.dip svg { animation: none; } }
+  /* The turn button (R11): flips the hand fingertips-down / fingertips-up. */
+  #turn { position: fixed; right: max(18px, env(safe-area-inset-right)); top: max(18px, env(safe-area-inset-top)); z-index: 5;
+          width: 64px; height: 64px; padding: 0; border: 0; border-radius: 50%; background: var(--panel, #fff); color: var(--accent, #c9897a);
+          box-shadow: 0 6px 14px rgba(60, 30, 20, .25); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #turn:active { transform: scale(.94); }
+  #turn svg { width: 100%; height: 100%; display: block; transform: rotate(var(--spin, 0deg)); transition: transform .5s ease-in-out; }
+  @media (prefers-reduced-motion: reduce) { #turn svg { transition: none; } }
   #boot-error { position: fixed; inset: auto 12px 12px 12px; padding: 10px; background: #fff; color: #a00; border-radius: 8px; display: none; }
 </style>
 <script type="importmap">
@@ -41,6 +50,13 @@
     <g clip-path="url(#bottle-glass)"><rect class="level" x="12" y="62" width="68" height="80" fill="#c22"/></g>
     <rect x="12" y="62" width="68" height="80" rx="16" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="3"/>
     <rect x="20" y="72" width="8" height="46" rx="4" fill="#fff" fill-opacity=".55"/>
+  </svg>
+</button>
+<button id="turn" type="button" aria-label="Turn the hand">
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+    <g id="turn-arrow"><path d="M14.3 28.9A18 18 0 0 1 45.8 20.4" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+      <path d="M51.9 27.8 51.1 15.9 40.8 24.3Z" fill="currentColor"/></g>
+    <use href="#turn-arrow" transform="rotate(180 32 32)"/>
   </svg>
 </button>
 <div id="boot-error"></div>

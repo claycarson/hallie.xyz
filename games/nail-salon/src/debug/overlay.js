@@ -3,7 +3,8 @@
 // the iPad's numbers can be pasted back.
 
 export class DebugOverlay {
-  constructor(getLines) {
+  /** @param {() => string[]} getLines @param {{label: string, href: string}[]} [links] */
+  constructor(getLines, links = []) {
     this.getLines = getLines;
     this.errors = [];
     this.frames = 0; this.fps = 0; this._t = performance.now();
@@ -12,7 +13,7 @@ export class DebugOverlay {
 
     const el = this.el = document.createElement('div');
     el.id = 'debug';
-    el.innerHTML = '<pre></pre><button type="button">Copy report</button>';
+    el.innerHTML = `<pre></pre><button type="button">Copy report</button><nav>${links.map((l) => `<a href="${l.href}">${l.label}</a>`).join('')}</nav>`;
     document.body.appendChild(el);
     this.pre = /** @type {HTMLElement} */ (el.querySelector('pre'));
     el.querySelector('button')?.addEventListener('click', () => navigator.clipboard?.writeText(this.report()).catch(() => {}));

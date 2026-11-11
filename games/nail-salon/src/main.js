@@ -17,16 +17,19 @@ import { Leveler, WET_HZ } from './paint/leveling.js';
 import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
+import { CameraRig } from './scene/rig.js';
 
 const Q = new URLSearchParams(location.search);
 const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) throw new Error(`data/${name}.json ${r.status}`); return r.json(); });
+
+const HAND_KEY = 'nailSalon.handDirection';
 
 async function boot() {
   const [tuning, handData, cameraData, themes, catalog] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog'].map(json));
   const [handGeo, under] = await Promise.all([loadHand(`./${handData.file}`), loadUnderside(`./${handData.under}`)]);
   const fixed = Q.has('scene');                       // fixed test scene: nothing drifts
   const state = {
-    scene: Q.get('scene') || 'nail', flip: Q.get('flip') === '1',
+    scene: Q.get('scene') || Q.get('view') || 'nail',
     shape: Q.get('shape') || 'round', free: Number(Q.get('free') ?? NaN),
     theme: themes.find((t) => t.id === Q.get('theme')) || themes[0],
     polish: catalog.polishes[0], dirty: true, lastStats: 0, stamps: 0,
@@ -187,28 +190,17 @@ async function boot() {
   }
 
   // ---- camera ------------------------------------------------------------------------------
-  const v = new THREE.Vector3(), up = new THREE.Vector3(), tgt = new THREE.Vector3();
+  const v = new THREE.Vector3();
+  const rig = new CameraRig(camera, cameraData, cfg.finger, state.scene === 'hand' ? 'hand' : 'nail', startUp());
   function placeCamera() {
-    const m = frame.group.matrixWorld, sign = state.flip ? 1 : -1;       // default: fingertips down (R11)
-    if (state.scene === 'hand') {
-      // The whole hand, seen from over the fingertips (or over the wrist when flipped).
-      const h = cameraData.hand, p = h.pitch * Math.PI / 180, yaw = h.yaw * Math.PI / 180;
-      tgt.set(h.target[0], h.target[1], h.target[2]);
-      v.set(Math.cos(p) * Math.sin(yaw), -sign * Math.cos(p) * Math.cos(yaw), Math.sin(p)).multiplyScalar(h.distance).add(tgt);
-      camera.position.copy(v); camera.up.set(0, 0, 1); camera.lookAt(tgt);
-      key.position.set(-0.3, 0.6, 0.4).add(camera.position); rimL.position.set(-0.6, 0.2, -0.15); rimR.position.set(0.6, 0.2, -0.15);
-      camera.updateMatrixWorld(true);
-      return;
-    } else {
-      tgt.set(0, nail.info.length * 0.5, 0);
-      v.set(0, tgt.y, cameraData.nail.distance);
-      up.set(0, sign, 0);
-    }
-    camera.position.copy(v).applyMatrix4(m);
-    camera.up.copy(up).transformDirection(m);
-    camera.lookAt(tgt.applyMatrix4(m));
+    rig.apply(frame.group.matrixWorld, nail.info.length);
     key.position.set(-0.3, 0.6, 0.4).add(camera.position); rimL.position.set(-0.6, 0.2, -0.15); rimR.position.set(0.6, 0.2, -0.15);
-    camera.updateMatrixWorld(true);
+  }
+  /** Which way the hand starts: ?flip=1 for tests, otherwise the saved choice (R11: tips down). */
+  function startUp() {
+    if (Q.has('flip')) return Q.get('flip') === '1';
+    if (fixed) return false;
+    try { return localStorage.getItem(HAND_KEY) === 'up'; } catch { return false; }
   }
   function resize() {
     const w = innerWidth, h = innerHeight;
@@ -244,7 +236,7 @@ async function boot() {
     return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height];
   }
 
-  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds });
+  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, palmSeconds: tuning.input.palmSeconds, blocked: () => rig.turning });
   // Sound is off unless asked for (?sound=1): Clay found the synthesized brush bad and optional.
   if (Q.get('sound') === '1') canvas.addEventListener('pointerdown', () => sound.wake());
 
@@ -277,6 +269,18 @@ async function boot() {
   }
   bottle?.addEventListener('pointerdown', (e) => { e.preventDefault(); dipBrush(); });
 
+  // ---- the turn button: fingertips down ↔ up (PLAN §6, R11) -----------------------------------
+  const turnBtn = document.getElementById('turn');
+  let turnSpin = 0;
+  function turnHand() {
+    if (engine.down || !rig.turn(performance.now())) return false;     // never while the brush is down
+    turnSpin += 180;
+    turnBtn?.style.setProperty('--spin', `${turnSpin}deg`);
+    try { localStorage.setItem(HAND_KEY, rig.up ? 'up' : 'down'); } catch { /* storage may be off */ }
+    return true;
+  }
+  turnBtn?.addEventListener('click', () => turnHand());
+
   const overlay = Q.has('debug') ? new DebugOverlay(() => {
     const s = stats.last, f = (n) => n.toFixed(2);
     return [
@@ -285,14 +289,31 @@ async function boot() {
       `polish ${state.polish.id}  load ${f(engine.load)}  speed ${f(engine.speed)}  stamps ${state.stamps}`,
       `coverage ${f(s.coverage)}  even ${f(s.evenness)}  spill ${s.spill.toFixed(3)}`,
       `colour ${f(s.colorMatch)}  finish ${f(s.finishMatch)}`,
-      `shape ${nail.shape}  free ${f(nail.free)}  theme ${state.theme.id}  ${state.flip ? 'tips up' : 'tips down'}`,
+      `shape ${nail.shape}  free ${f(nail.free)}  theme ${state.theme.id}  ${rig.up ? 'tips up' : 'tips down'}`,
+      `frame ${perf.frame.toFixed(1)} ms  js ${perf.js.toFixed(1)} ms  gpu time n/a`,
+      `draws ${renderer.info.render.calls}  tris ${(renderer.info.render.triangles / 1000).toFixed(0)}k  geometries ${renderer.info.memory.geometries}  textures ${renderer.info.memory.textures}`,
+      `size ${innerWidth}x${innerHeight} @${renderer.getPixelRatio()}`,
     ];
-  }) : null;
+  }, debugControls()) : null;
+
+  /** Debug-only shortcuts: each one reloads the page with one query value changed. */
+  function debugControls() {
+    const go = (k, val) => { const u = new URLSearchParams(location.search); u.set(k, val); return `?${u}`; };
+    return [
+      ...themes.map((t) => ({ label: t.name, href: go('theme', t.id) })),
+      ...['nail', 'hand'].map((n) => ({ label: n, href: go('view', n) })),
+      ...handData.fingers.map((f) => ({ label: `f${f.finger}`, href: go('finger', String(f.finger)) })),
+    ];
+  }
 
   let frames = 0, prev = performance.now();
+  const perf = { frame: 0, js: 0 };                  // smoothed ms: frame to frame, and our own work
   const waiters = [];
   function loop(now) {
+    const began = performance.now();
+    perf.frame += (now - prev - perf.frame) * 0.1;
     const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
+    if (rig.update(now)) placeCamera();
     frame.update();
     flush();
     if (!fixed) wetAdvance(dt);
@@ -303,6 +324,7 @@ async function boot() {
     }
     renderer.render(scene, camera);
     drawBottle();
+    perf.js += (performance.now() - began - perf.js) * 0.1;
     overlay?.tick(); frames++;
     while (waiters.length) waiters.pop()();
     requestAnimationFrame(loop);
@@ -317,7 +339,12 @@ async function boot() {
     sd, setShape, setPolish, setRequest, nextFrame,
     three: { scene, camera, renderer, key },
     setTheme: (id) => setTheme(themes.find((t) => t.id === id) || themes[0]),
-    view: (scene, flip = state.flip) => { state.scene = scene; state.flip = flip; placeCamera(); return nextFrame(); },
+    view: (view, up = rig.up) => { rig.view = view; rig.set(up); placeCamera(); return nextFrame(); },
+    /** Press the turn button and wait for the turn to finish. Resolves false if it was refused. */
+    async turn() { const ok = turnHand(); while (rig.turning) await nextFrame(); await nextFrame(); return ok; },
+    direction: () => ({ up: rig.up, turning: rig.turning, t: rig.t }),
+    /** Where a paint-frame point is on screen, in CSS pixels. */
+    project: (x, y) => paintToClient(x, y),
     clear: () => { targets.clear(renderer); engine.dip(); wet.left = 0; state.dirty = true; return nextFrame(); },
     dip: () => engine.dip(),
     tapBottle: dipBrush,
