@@ -27,6 +27,7 @@ const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) thr
 const HAND_KEY = 'nailSalon.handDirection';
 
 async function boot() {
+  const bootStart = performance.now();
   const [tuning, handData, cameraData, themes, catalog] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog'].map(json));
   const [handGeo, under] = await Promise.all([loadHand(`./${handData.file}`), loadUnderside(`./${handData.under}`)]);
   const tune = parseTune(Q.get('tune'));                // ?tune=… : frame editor offsets
@@ -312,7 +313,7 @@ async function boot() {
       `shape ${nail.shape}  free ${f(nail.free)}  theme ${state.theme.id}  ${rig.up ? 'tips up' : 'tips down'}`,
       `frame ${perf.frame.toFixed(1)} ms  js ${perf.js.toFixed(1)} ms  gpu time n/a`,
       `draws ${renderer.info.render.calls}  tris ${(renderer.info.render.triangles / 1000).toFixed(0)}k  geometries ${renderer.info.memory.geometries}  textures ${renderer.info.memory.textures}`,
-      `size ${innerWidth}x${innerHeight} @${renderer.getPixelRatio()}`,
+      `size ${innerWidth}x${innerHeight} @${renderer.getPixelRatio()}  boot ${perf.boot.toFixed(0)} ms`,
     ];
   }, debugControls()) : null;
 
@@ -327,7 +328,7 @@ async function boot() {
   }
 
   let frames = 0, prev = performance.now();
-  const perf = { frame: 0, js: 0 };                  // smoothed ms: frame to frame, and our own work
+  const perf = { frame: 0, js: 0, boot: 0 };                  // smoothed ms: frame to frame, and our own work
   const waiters = [];
   function loop(now) {
     const began = performance.now();
@@ -411,6 +412,7 @@ async function boot() {
   };
   await nextFrame();
   await stats.refresh(renderer);
+  perf.boot = performance.now() - bootStart;
   return api;
 }
 

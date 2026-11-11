@@ -1,20 +1,41 @@
-# Device check (iPad)
+# Device check: Gate M0 (iPad)
 
 **https://dev.hallie.xyz/?debug** (HTTPS dev copy of the `nail-salon` branch; not live).
 
-Early look only, before the M0 gate. The real hand; one nail takes paint (the index finger,
-or `&finger=0…4`, thumb to pinky). `?scene=hand&debug` shows the whole hand.
-1. Does the nail look like it grows out of the finger?
-2. Paint with the Pencil. Does it keep up with your hand? Does it lay down like a brush, not a spray?
-3. Rest your palm on the screen while painting. The palm must not paint.
-4. Put the Pencil down for a minute, then paint with a finger. It should work.
-5. Tilt the Pencil flat, then upright. The stroke should get wider, then narrower.
-6. Paint until the brush goes thin and streaky and the bottle on the right pulses. Tap the bottle.
-   The next stroke should go on full again.
-7. Tap "Copy report" and paste what it says back.
+If an old version shows, reload the page. Fingers: tap `f0`…`f4` in the debug panel (thumb to pinky).
 
-On the Mac: `npm run serve` in `games/nail-salon/`, then http://127.0.0.1:8813/?debug (mouse paints).
+## On the Mac first
+Open `~/Documents/Repositories/tasks/2026-11-10_nail-salon-mockups/anatomy-sheet/index.html`.
+Our nail, bare and in red, beside real photos. **Sign off, or say what looks wrong.**
 
-Useful URLs: `?scene=nail|hand`, `&theme=boutique|candy|midnight`,
+## Painting (Pencil)
+1. Does the nail look like it grows out of the finger? Try `f0`, the thumb.
+2. Hold the Pencil just above the nail. A small brush should float there with a soft shadow.
+3. Paint. The brush should follow your tip with no lag, and lean the way the Pencil leans.
+4. Does the polish lay down like a brush, not a spray?
+5. Tilt the Pencil flat, then upright. The stroke gets wider, then narrower.
+6. Rest your palm on the screen while painting. The palm must not paint.
+7. Paint until the bottle on the right pulses and the stroke goes thin. Tap the bottle. The next
+   stroke goes on full again.
+8. Put the Pencil down for a minute, then paint with a finger. It should work.
+
+## Turning the hand
+9. Tap the round button at the top right, with the two arrows. The nail spins a half turn.
+10. Paint some, then turn. The paint must not change. Paint again from the other way.
+11. Which way feels right to paint: fingertips down (the default) or up?
+12. Reload the page. It should stay the way you left it.
+
+## Looks
+13. Tap `hand` in the debug panel, then Boutique, Candy Pop and Midnight Glam. Tap the turn button
+    in hand view too.
+14. Try `&polish=chrome-silver`, `&polish=glitter-gold`, `&polish=holo-lilac` on the end of the URL.
+
+## Then
+15. Tap **Copy report** and paste what it says back. It now has frame time, draw counts and boot time.
+16. **Playtest 0:** Hallie paints for five minutes with no instructions. Note what she tries that
+    doesn't work.
+
+Useful URLs: `?scene=nail|hand` (fixed test views), `&theme=boutique|candy|midnight`,
 `&shape=round|square|squoval|oval|almond|coffin|stiletto`, `&free=0…1`, `&flip=1`,
-`&polish=cream-pink|glitter-gold|chrome-silver|holo-lilac|shimmer-pink`.
+`&polish=cream-pink|glitter-gold|chrome-silver|holo-lilac|shimmer-pink`, `&debug=frames` (frame editor).
+On the Mac: `npm run serve` in `games/nail-salon/`, then http://127.0.0.1:8813/?debug (mouse paints).
