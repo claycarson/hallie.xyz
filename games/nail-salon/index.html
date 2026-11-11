@@ -59,6 +59,17 @@
   #frames output { float: right; }
   #frames input { display: block; width: 100%; margin: 2px 0 0; }
   #frames button { font: inherit; margin-top: 8px; padding: 4px 8px; border-radius: 6px; border: 0; }
+  /* The tray (PLAN §13.3): swab and remover pad above the bottle, Oops below. The chosen tool is lit. */
+  .tool { position: fixed; right: max(32px, env(safe-area-inset-right)); z-index: 5; width: 64px; height: 64px; padding: 0; border: 0;
+          border-radius: 50%; background: var(--panel, #fff); color: var(--accent, #c9897a); box-shadow: 0 6px 14px rgba(60, 30, 20, .25);
+          cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .tool svg { width: 100%; height: 100%; display: block; }
+  .tool:active { transform: scale(.94); }
+  .tool.on { box-shadow: 0 0 0 4px var(--accent, #c9897a), 0 6px 14px rgba(60, 30, 20, .25); }
+  #swab { top: calc(50% - 75px - 160px); } #remover { top: calc(50% - 75px - 86px); }
+  #oops { top: calc(50% + 75px + 22px); }
+  #oops[disabled] { opacity: .35; cursor: default; }
+  #bottle.on svg { filter: drop-shadow(0 0 6px var(--accent, #c9897a)) drop-shadow(0 6px 10px rgba(60, 30, 20, .25)); }
   #boot-error { position: fixed; inset: auto 12px 12px 12px; padding: 10px; background: #fff; color: #a00; border-radius: 8px; display: none; }
 </style>
 <script type="importmap">
@@ -67,7 +78,7 @@
 </head>
 <body>
 <canvas id="gl"></canvas>
-<button id="bottle" type="button" aria-label="Dip the brush">
+<button id="bottle" class="on" data-tool="polish" type="button" aria-label="Polish: tap to dip the brush">
   <svg viewBox="0 0 92 150" aria-hidden="true">
     <defs><clipPath id="bottle-glass"><rect x="12" y="62" width="68" height="80" rx="16"/></clipPath></defs>
     <rect x="34" y="4" width="24" height="50" rx="7" fill="#3b2f33"/>
@@ -77,6 +88,20 @@
     <rect x="12" y="62" width="68" height="80" rx="16" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="3"/>
     <rect x="20" y="72" width="8" height="46" rx="4" fill="#fff" fill-opacity=".55"/>
   </svg>
+</button>
+<button id="swab" class="tool" data-tool="swab" type="button" aria-label="Swab: clean polish off the skin">
+  <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 44 44 20" stroke="#e7d6c9" stroke-width="5" stroke-linecap="round"/>
+    <ellipse cx="17" cy="47" rx="9" ry="6" transform="rotate(-45 17 47)" fill="#fff" stroke="currentColor" stroke-width="2.5"/>
+    <ellipse cx="47" cy="17" rx="9" ry="6" transform="rotate(-45 47 17)" fill="#fff" stroke="currentColor" stroke-width="2.5"/></svg>
+</button>
+<button id="remover" class="tool" data-tool="remover" type="button" aria-label="Remover pad: take the polish off">
+  <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="17" fill="#fff" stroke="currentColor" stroke-width="2.5"/>
+    <circle cx="32" cy="32" r="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 4" opacity=".6"/>
+    <path d="M27 30q5 -6 10 0" fill="none" stroke="#8fc8e8" stroke-width="3" stroke-linecap="round"/></svg>
+</button>
+<button id="oops" class="tool" type="button" aria-label="Oops: undo" disabled>
+  <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M22 28h16a10 10 0 0 1 0 20h-8" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+    <path d="M27 18 17 28l10 10" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 </button>
 <button id="turn" type="button" aria-label="Turn the hand">
   <svg viewBox="0 0 64 64" aria-hidden="true">

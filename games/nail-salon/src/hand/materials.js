@@ -149,16 +149,16 @@ export function makeNailMaterial(uniforms) {
  * fingertips, then fold shading and spilled polish round the active nail.
  * `tips` is a uniform holding the five fingertip positions in world space.
  */
-export function makeSkinMaterial(uniforms, tips) {
+export function makeSkinMaterial(uniforms, tips, spill) {
   const m = new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: 0.55, metalness: 0,
     sheen: 0.45, sheenRoughness: 0.5, sheenColor: srgb('#ffb5a0'), clearcoat: 0.06, clearcoatRoughness: 0.5,
   });
-  m.onBeforeCompile = (shader) => inject(shader, { ...uniforms, uTips: tips },
+  m.onBeforeCompile = (shader) => inject(shader, { ...uniforms, uTips: tips, ...spill },
     'uniform mat4 uWorldToPaint;\nattribute vec3 tone;\nvarying vec3 vPaint, vTone, vWorld;\nvarying float vUp;',
     `vec4 skW = modelMatrix * vec4(transformed, 1.0);
      vPaint = (uWorldToPaint * skW).xyz; vWorld = skW.xyz; vTone = tone; vUp = normalize(mat3(modelMatrix) * normal).z;`, {
-      decl: 'varying vec3 vPaint, vTone, vWorld;\nvarying float vUp;\nuniform vec3 uTips[5];',
+      decl: 'varying vec3 vPaint, vTone, vWorld;\nvarying float vUp;\nuniform vec3 uTips[5];\nuniform sampler2D tSpill;\nuniform mat4 uW2P[5];\nuniform vec4 uRects[5];\nuniform float uActiveF;',
       after: {
         color_fragment: /* glsl */`
           vec2 skUV = nlUv(vPaint.xy);
@@ -186,6 +186,18 @@ export function makeSkinMaterial(uniforms, tips) {
           vec4 skPig = texture2D(tPig, skUV);
           float skFilm = clamp(skPig.a, 0.0, 1.0) * skIn * smoothstep(0.015, 0.03, skSd);   // past the fold wall's hair
           skCol = mix(skCol, skPig.rgb / max(skPig.a, 1e-4), skFilm * uSkinFilm);
+          // The other fingers' spill, from the spill atlas (src/paint/spill.js), so it shows in hand
+          // view and on neighbouring fingers too.
+          for (int i = 0; i < 5; i++) {
+            if (float(i) == uActiveF) continue;
+            vec3 sp = (uW2P[i] * vec4(vWorld, 1.0)).xyz;
+            vec2 spUV = (sp.xy - uRects[i].xy) / uRects[i].zw;
+            if (spUV.x < 0.0 || spUV.y < 0.0 || spUV.x > 1.0 || spUV.y > 1.0) continue;
+            vec4 spC = texture2D(tSpill, vec2((float(i) + clamp(spUV.x, 0.002, 0.998)) / 5.0, spUV.y));
+            float spF = spC.a * smoothstep(-0.6, -0.4, sp.z) * step(sp.z, 1.0);
+            skCol = mix(skCol, spC.rgb, spF * uSkinFilm);
+            skFilm = max(skFilm, spF);
+          }
           diffuseColor.rgb = skCol;`,
         metalnessmap_fragment: /* glsl */`
           roughnessFactor = mix(roughnessFactor, 0.4, skFilm);`,
@@ -202,6 +214,6 @@ export function makeSkinMaterial(uniforms, tips) {
           }`,
       },
     });
-  m.customProgramCacheKey = () => 'skin-2';
+  m.customProgramCacheKey = () => 'skin-3';
   return m;
 }

@@ -13,6 +13,7 @@ import { StampRenderer } from './paint/stamps.js';
 import { StrokeEngine } from './paint/stroke.js';
 import { Leveler, WET_HZ } from './paint/leveling.js';
 import { DesignPainter, nailLayers } from './paint/design.js';
+import { SpillAtlas } from './paint/spill.js';
 import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
@@ -37,7 +38,7 @@ async function boot() {
     scene: Q.get('scene') || Q.get('view') || 'nail',
     shape: Q.get('shape') || 'round', free: Number(Q.get('free') ?? NaN),
     theme: themes.find((t) => t.id === Q.get('theme')) || themes[0],
-    polish: catalog.polishes[0], dirty: true, lastStats: 0, stamps: 0,
+    polish: catalog.polishes[0], dirty: true, lastStats: 0, stamps: 0, tool: /** @type {'polish' | 'swab' | 'remover'} */ ('polish'),
   };
 
   // ---- renderer, scene, light --------------------------------------------------------------
@@ -70,10 +71,23 @@ async function boot() {
   const startCfg = handData.fingers.find((f) => f.finger === startId) || handData.fingers[0];
   const skinU = makeFingerUniforms(new NailFrame(startCfg, handData.maxFree), fold, tuning);
   const tips = { value: handData.fingers.map((f) => new THREE.Vector3(...f.origin).addScaledVector(new THREE.Vector3(...f.tipDir).normalize(), f.bedLength * 0.9).addScaledVector(new THREE.Vector3(...f.normal).normalize(), -0.004)) };
-  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(skinU, tips));
+  // The other fingers' spill reaches the skin through one atlas texture (src/paint/spill.js).
+  const spillU = {
+    tSpill: { value: null }, uActiveF: { value: -1 },
+    uW2P: { value: handData.fingers.map(() => new THREE.Matrix4()) }, uRects: { value: handData.fingers.map(() => new THREE.Vector4()) },
+  };
+  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(skinU, tips, spillU));
   scene.add(skinMesh);
   scene.updateMatrixWorld(true);
   const fingers = handData.fingers.map((c) => new Finger(c, { scene, skinMesh, renderer, handData, tuning, caps }));
+  for (const f of fingers) {
+    spillU.uW2P.value[f.id].copy(f.frame.worldToPaint);
+    const r = f.frame.rect; spillU.uRects.value[f.id].set(r.x0, r.y0, r.w, r.h);
+  }
+  const spill = new SpillAtlas(tuning.paint.restSize);
+  spillU.tSpill.value = spill.texture;
+  /** Redraw the other fingers' spill (after their paint or shape changes). */
+  const refreshSpill = () => spill.update(renderer, fingers);
 
   const table = new THREE.Mesh(new THREE.CircleGeometry(0.6, 48), new THREE.MeshStandardMaterial({ roughness: 0.9 }));
   table.position.z = -0.0005;
@@ -98,6 +112,7 @@ async function boot() {
   function bindActive() {
     active.bind(big);
     for (const k of Object.keys(skinU)) skinU[k].value = active.uniforms[k].value;
+    spillU.uActiveF.value = active.id;
     stamps.setFinger(active.sdf.texture, active.skinMask, active.frame.rect);
     stats = active.nstats;
     engine.nailLength = active.info.length;
@@ -126,8 +141,7 @@ async function boot() {
 
   const flush = () => {
     if (!engine.count) return;
-    active.wet.left = tuning.wet.drySeconds + 0.5;
-    active.mapColor = state.polish.color;
+    if (state.tool === 'polish') { active.wet.left = tuning.wet.drySeconds + 0.5; active.mapColor = state.polish.color; }
     stamps.flush(renderer, engine.stamps, engine.count, big);
     state.stamps += engine.count; engine.reset(); state.dirty = true; active.dirty = true;
   };
@@ -150,6 +164,7 @@ async function boot() {
     active = f;
     big.copyFrom(renderer, f.targets);
     bindActive();
+    refreshSpill();
     f.frame.group.add(brushModel.root, brushModel.shadow);
     state.dirty = true;
     perf.switchMs = performance.now() - t0;
@@ -157,12 +172,56 @@ async function boot() {
   }
 
   /** GPU memory held by paint: every finger's own set, the shared one and the leveling scratch. */
-  const paintBytes = () => big.bytes + fingers.reduce((n, f) => n + f.targets.bytes, 0) + big.size * big.size * (caps.halfFloat ? 8 : 4);
+  const paintBytes = () => big.bytes + undo.bytes + spill.bytes + fingers.reduce((n, f) => n + f.targets.bytes, 0) + big.size * big.size * (caps.halfFloat ? 8 : 4);
+
+  // ---- tools: the polish brush, the swab and the remover pad (PLAN §7, §8) -------------------
+  /** @param {'polish' | 'swab' | 'remover'} name */
+  function setTool(name) {
+    if (engine.down) return false;
+    flush();
+    state.tool = name;
+    const T = tuning.tools;
+    engine.setTool(name === 'polish' ? null : T[name]);
+    stamps.setEraser(name === 'polish' ? null : name, T.swab.edge, T.remover.idClear);
+    // The 3D brush shows only for polish (loop: brushModel.update). Swab and pad models: later.
+    for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('on', b.getAttribute('data-tool') === name);
+    return true;
+  }
+
+  // ---- Oops: one level of undo (PLAN §4.3) ---------------------------------------------------
+  // Just before every stroke (any tool), the active nail's whole paint set is copied aside. Oops
+  // copies it back; if she has moved on, the camera goes back to that nail first.
+  const undo = new PaintTargets(tuning.paint.activeSize, caps);
+  /** @type {{ finger: Finger, wet: number, mapColor: string | undefined } | null} */
+  let undoFrom = null;
+  const oopsBtn = document.getElementById('oops');
+  const showOops = () => oopsBtn?.toggleAttribute('disabled', !undoFrom);
+  function snapshot() {
+    flush();
+    undo.copyFrom(renderer, big);
+    undoFrom = { finger: active, wet: active.wet.left, mapColor: active.mapColor };
+    showOops();
+  }
+  async function undoLast() {
+    if (!undoFrom || engine.down) return false;
+    flush();
+    const { finger: f, wet: w, mapColor } = undoFrom;
+    // On another nail: go back to it first, so she sees what Oops did and the restore is full size.
+    if (f !== active && !goTo('nail', f.id)) return false;
+    undoFrom = null; showOops();
+    big.copyFrom(renderer, undo); bindActive(); active.dirty = true;
+    f.wet.left = w; f.mapColor = mapColor;
+    state.dirty = true;
+    await f.nstats.refresh(renderer, true);
+    drawMap();
+    return true;
+  }
 
   function setShape(shape, free) {
     flush();
     for (const f of fingers) f.setShape(renderer, shape, free);
     bindActive();
+    refreshSpill();
     state.dirty = true;
   }
 
@@ -195,6 +254,8 @@ async function boot() {
       f.record = { finger: f.id, shape: f.shape, freeLength: f.free, polish: L.base?.id ?? null, topCoat: L.topCoat, dry: true, oldPolish: !!o.chipped, art: L.objects };
     }
     state.dirty = true;
+    undoFrom = null; showOops();
+    refreshSpill();
     await Promise.all(fingers.map((f) => f.nstats.refresh(renderer, true)));
     drawMap();
   }
@@ -282,7 +343,8 @@ async function boot() {
   /** Empty background in nail view: no finger under this screen point. */
   const offHand = (cx, cy) => !clientToPaint(cx, cy, pt) || !active.onHand(pt.x, pt.y);
   const input = new PointerInput(canvas, {
-    toPaint: clientToPaint, engine, ...tuning.input, onCursor: showBrush, offHand,
+    toPaint: clientToPaint, engine, ...tuning.input, onCursor: (...a) => { if (state.tool === 'polish') showBrush(...a); }, offHand,
+    onBeforeStroke: snapshot,
     blocked: () => rig.moving || rig.view !== 'nail',
   });
   // Sound is off unless asked for (?sound=1): Clay found the synthesized brush bad and optional.
@@ -316,7 +378,12 @@ async function boot() {
     if (!bottle) return;
     bottle.classList.remove('dip'); void bottle.offsetWidth; bottle.classList.add('dip');
   }
-  bottle?.addEventListener('pointerdown', (e) => { e.preventDefault(); if (input.touchMayPress(e)) dipBrush(); });
+  bottle?.addEventListener('pointerdown', (e) => { e.preventDefault(); if (input.touchMayPress(e)) { setTool('polish'); dipBrush(); } });
+  for (const b of document.querySelectorAll('[data-tool]')) {
+    if (b === bottle) continue;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); if (input.touchMayPress(e)) setTool(/** @type {any} */ (b.getAttribute('data-tool'))); });
+  }
+  oopsBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); if (input.touchMayPress(e)) undoLast(); });
 
   // ---- the turn button: fingertips down ↔ up (PLAN §6, R11) -----------------------------------
   const turnBtn = document.getElementById('turn');
@@ -470,7 +537,7 @@ async function boot() {
     perf.frame += (now - prev - perf.frame) * 0.1;
     const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
     if (rig.update(now)) placeCamera();
-    brushModel.update(now, engine.down, rig.view === 'nail' && !rig.turning);
+    brushModel.update(now, engine.down, rig.view === 'nail' && !rig.turning && state.tool === 'polish');
     active.frame.update();
     flush();
     if (!fixed) wetAdvance(dt);
@@ -529,7 +596,8 @@ async function boot() {
     stampCount: () => state.stamps + engine.count,
     /** Where a paint-frame point is on screen, in CSS pixels. */
     project: (x, y) => paintToClient(x, y),
-    clear: () => { big.clear(renderer); for (const f of fingers) { f.targets.clear(renderer); f.wet.left = 0; f.dirty = false; f.nstats.last = { coverage: 0, evenness: 1, colorMatch: 0, finishMatch: 0, spill: 0 }; } engine.dip(); state.dirty = true; return nextFrame(); },
+    clear: () => { big.clear(renderer); for (const f of fingers) { f.targets.clear(renderer); f.wet.left = 0; f.dirty = false; f.nstats.last = { coverage: 0, evenness: 1, colorMatch: 0, finishMatch: 0, spill: 0 }; } refreshSpill(); undoFrom = null; showOops(); engine.dip(); state.dirty = true; return nextFrame(); },
+    setTool, undo: undoLast, canUndo: () => !!undoFrom, tool: () => state.tool,
     dip: () => engine.dip(),
     tapBottle: dipBrush,
     /** Let wet polish level and dry for `seconds` of game time, without waiting. */

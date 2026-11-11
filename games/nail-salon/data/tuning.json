@@ -45,6 +45,11 @@
   "nav": { "swipePx": 70, "swipeMs": 700, "tapPx": 14, "pickPx": 90 },
   "paint": { "activeSize": 1024, "restSize": 512 },
   "nail": { "gloss": 0.5 },
+  "tools": {
+    "swab": { "radius": 0.14, "alpha": 0.2, "edge": [0.01, 0.03] },
+    "remover": { "radius": 0.6, "alpha": 0.085, "idClear": 0.05 },
+    "note": "erasers: each stamp keeps 1 - pad x alpha. swab.edge = sd band where the swab starts working past the outline (nail widths); remover clears the finish under film idClear"
+  },
   "design": {
     "edgeAA": 0.01,
     "french": [0.25, 0.16, 0.012],

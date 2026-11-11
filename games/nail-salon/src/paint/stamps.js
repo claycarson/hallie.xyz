@@ -141,6 +141,40 @@ export class StampRenderer {
       void main() { float sd; if (footprint(sd) < 0.5) discard; gl_FragColor = vec4(uId, 0.0, 0.0, 1.0); }`,
       { uniforms: { uId: this.uId }, src: THREE.OneFactor, dst: THREE.ZeroFactor, srcA: THREE.OneFactor, dstA: THREE.ZeroFactor });
 
+    // Erasers (swab, remover pad): a soft round pad that multiplies paint down. "keep" = 1 − pad ×
+    // alpha, so overlapping stamps take off a fixed share and nothing can go below 0. The swab
+    // works only past the outline (uOutside = 1), so it can't touch polish on the nail.
+    this.uOutside = { value: 0 };
+    this.uEdge2 = { value: new THREE.Vector2(0.01, 0.03) };
+    const ERASE = /* glsl */`
+      uniform float uOutside;
+      uniform vec2 uEdge2;
+      float pad(out float sd) {
+        vec2 uv = (vP - uRect.xy) / uRect.zw;
+        sd = texture2D(tSdf, uv).r;
+        float f = 1.0 - smoothstep(0.55, 1.0, length(vLocal));
+        return f * mix(1.0, smoothstep(uEdge2.x, uEdge2.y, sd), uOutside);
+      }`;
+    const multiply = { src: THREE.ZeroFactor, dst: THREE.SrcColorFactor, srcA: THREE.ZeroFactor, dstA: THREE.SrcAlphaFactor };
+    const eraseU = { uOutside: this.uOutside, uEdge2: this.uEdge2 };
+    this.erase = stampMaterial(shared, `${ERASE}
+      void main() { float sd; float keep = 1.0 - pad(sd) * vParams.y; gl_FragColor = vec4(keep); }`,
+      { uniforms: eraseU, ...multiply });
+    // With the polish gone, so is its finish: clear Id where film is nearly 0 under the pad.
+    this.uPigNow = { value: null };
+    this.uIdClear = { value: 0.05 };
+    this.idClear = stampMaterial(shared, `${ERASE}
+      uniform sampler2D tPigNow;
+      uniform float uIdClear;
+      void main() {
+        float sd; float f = pad(sd);
+        if (f < 0.5 || texture2D(tPigNow, (vP - uRect.xy) / uRect.zw).a >= uIdClear) discard;
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      }`,
+      { uniforms: { ...eraseU, tPigNow: this.uPigNow, uIdClear: this.uIdClear }, src: THREE.OneFactor, dst: THREE.ZeroFactor, srcA: THREE.OneFactor, dstA: THREE.ZeroFactor });
+    /** null = polish; otherwise 'swab' | 'remover'. */
+    this.eraser = null;
+
     this.mesh = new THREE.Mesh(quad, this.pigment);
     this.mesh.frustumCulled = false;
   }
@@ -152,6 +186,13 @@ export class StampRenderer {
     this.material.blendAlpha = finish.iridescence;
     this.uFlake.value.fromArray(finish.flake || [0, 0, 0]);
     this.uId.value = finish.id / 255;
+  }
+
+  /** Erase instead of paint: 'swab' (skin only) or 'remover' (everything); null = polish. */
+  setEraser(kind, edge, idClear) {
+    this.eraser = kind;
+    if (edge) this.uEdge2.value.set(edge[0], edge[1]);
+    if (idClear != null) this.uIdClear.value = idClear;
   }
 
   /** Bind one finger's SDF, skin mask and paint rectangle. */
@@ -167,6 +208,21 @@ export class StampRenderer {
     this.buffer.clearUpdateRanges(); this.buffer.addUpdateRange(0, count * STAMP_FLOATS);
     this.buffer.needsUpdate = true;
     this.geometry.instanceCount = count;
+    if (this.eraser) {
+      const long = this.shared.uLong.value;
+      this.shared.uLong.value = 1;                          // erasers are round
+      this.uOutside.value = this.eraser === 'swab' ? 1 : 0;
+      this.mesh.material = this.erase;
+      drawInto(renderer, this.mesh, targets.pigment);
+      if (this.eraser === 'remover') {
+        drawInto(renderer, this.mesh, targets.art);
+        this.uPigNow.value = targets.pigment.texture;
+        this.mesh.material = this.idClear;
+        drawInto(renderer, this.mesh, targets.id);
+      }
+      this.shared.uLong.value = long;
+      return;
+    }
     for (const [mat, target] of [[this.pigment, targets.pigment], [this.material, targets.material], [this.detail, targets.detail], [this.id, targets.id]]) {
       this.mesh.material = mat;
       drawInto(renderer, this.mesh, target);

@@ -7,6 +7,19 @@ Gate M0 passed 2026-11-11 (Clay). M1 is in progress; its steps are first, M0's a
 If an old version shows, reload the page. Fingers: tap `f0`…`f4` in the debug panel (thumb to pinky).
 
 
+## M1.3: swab, remover pad, Oops (try when convenient; not blocking)
+New buttons on the right: swab (top), remover pad, the bottle, and Oops (curved arrow) below it.
+1. Paint a nail and go off the edge onto the skin on purpose. The polish shows on the skin.
+2. Tap the **swab** and rub the messy skin, right up to and over the nail. The skin comes clean; the
+   polish on the nail stays.
+3. Paint a messy stroke, then tap **Oops**. That stroke is gone; Oops goes grey (one step only).
+4. Paint a stroke, move to the next nail, tap **Oops**. The camera goes back and undoes it there.
+5. Tap the **remover pad** and rub a painted nail top to bottom. Each rub takes about half off;
+   3–4 rubs leave it bare.
+6. Tap the bottle to go back to painting. The brush shows again; with the swab or pad it doesn't.
+7. Spill on two nails, then tap the map's palm (whole hand). The spill shows on both fingers.
+8. **Copy report**: `paint … MB` should be about 80.
+
 ## M1.1: all five nails (try when convenient; not blocking)
 1. Open **https://dev.hallie.xyz/?view=hand&debug**. The whole hand shows, with a little hand map at
    the bottom left.

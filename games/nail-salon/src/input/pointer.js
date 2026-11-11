@@ -163,7 +163,7 @@ export class PointerInput {
     this.info.type = type;
     if (!toPaint(s.clientX, s.clientY, this._p)) { this._end(); return; }
     const w = engine.tiltFactor(altitude);
-    if (kind === 'down') { engine.begin(this._p.x, this._p.y, t, w); this.strokeType = type; this.o.onStrokeStart?.(); }
+    if (kind === 'down') { this.o.onBeforeStroke?.(); engine.begin(this._p.x, this._p.y, t, w); this.strokeType = type; this.o.onStrokeStart?.(); }
     else engine.move(this._p.x, this._p.y, t, w);
     this.o.onCursor?.(s.clientX, s.clientY, this._p.x, this._p.y, altitude, s.azimuthAngle ?? null, true);
   }

@@ -36,6 +36,18 @@ export class StrokeEngine {
     this._dx = 0; this._dy = 1;
     /** Called when the buffer fills mid-stroke, so the owner can draw and reset it. */
     this.onFull = null;
+    /** Tool settings. The polish brush: load, speed, fold wall and forgiving start all apply.
+     *  An eraser (swab, remover pad): a fixed alpha, never runs dry, no wall, no snap. */
+    this.tool = { erase: false, alpha: 0 };
+  }
+
+  /**
+   * Choose what the next strokes are. null = the polish brush.
+   * @param {{ radius: number, alpha: number } | null} eraser
+   */
+  setTool(eraser) {
+    this.tool = eraser ? { erase: true, alpha: eraser.alpha } : { erase: false, alpha: 0 };
+    this.radius = eraser ? eraser.radius : this.t.radius;
   }
 
   dip() { this.load = 1; }
@@ -53,7 +65,7 @@ export class StrokeEngine {
     this._carry = 0; this._dist = 0; this.speed = 0;
     this._seed = (this._seed + 7.31) % 97;
     const d = this.sd(x, y);
-    this._snap = d > 0 && d <= this.t.snap;       // forgiving start just outside the nail
+    this._snap = !this.tool.erase && d > 0 && d <= this.t.snap;       // forgiving start just outside the nail
     this._emit(x, y, widthFactor, this.t.speedSlow);
   }
 
@@ -69,7 +81,7 @@ export class StrokeEngine {
     let walked = step - this._carry;
     while (walked <= len) {
       this._dist += step;
-      this.load = Math.max(0, this.load - step / (this.t.drainLengths * this.nailLength));
+      if (!this.tool.erase) this.load = Math.max(0, this.load - step / (this.t.drainLengths * this.nailLength));
       this._emit(this._x + this._dx * walked, this._y + this._dy * walked, widthFactor, this.speed);
       walked += step;
     }
@@ -99,8 +111,8 @@ export class StrokeEngine {
     const o = this.count++ * STAMP_FLOATS, s = this.stamps;
     s[o] = x; s[o + 1] = y; s[o + 2] = this._dx; s[o + 3] = this._dy;
     s[o + 4] = this.radius * widthFactor;
-    s[o + 5] = t.centreAlpha * loadFactor * speedFactor;
-    s[o + 6] = inside ? 1 : 0;
+    s[o + 5] = this.tool.erase ? this.tool.alpha : t.centreAlpha * loadFactor * speedFactor;
+    s[o + 6] = inside && !this.tool.erase ? 1 : 0;
     s[o + 7] = this._dist + this._seed;
   }
 
