@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- Dev tool: look at assets/hand/hand.bin from any side, to find nail frames by eye.
      ?dir=x,y,z (camera sits that way from the target) &up=x,y,z &at=x,y,z &span=metres across the view
-     &grid=1 draws 1 cm ticks on the three axes through `at`. Served by `npm run serve`. -->
+     &grid=1 draws 1 cm ticks on the three axes through `at`. &tone=1 shows the baked skin tone
+     (red creases, green bumps, blue open sky) and &wire=1 the triangles. Served by `npm run serve`. -->
 <meta charset="utf-8">
 <style>html,body{margin:0;height:100%;background:#fff}canvas{display:block;width:100%;height:100%}</style>
 <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
@@ -16,7 +17,8 @@ renderer.setPixelRatio(2); renderer.setSize(innerWidth, innerHeight, false);
 renderer.setClearColor(0xffffff);
 const scene = new THREE.Scene();
 const geo = await loadHand(Q.get('file') || '../assets/hand/hand.bin');
-scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd9b9a6, roughness: 0.6 })));
+if (Q.get('tone')) geo.setAttribute('color', geo.getAttribute('tone'));
+scene.add(new THREE.Mesh(geo, Q.get('tone') ? new THREE.MeshBasicMaterial({ vertexColors: true, wireframe: !!Q.get('wire') }) : new THREE.MeshStandardMaterial({ color: 0xd9b9a6, roughness: 0.6, wireframe: !!Q.get('wire') })));
 const at = vec('at', '0,0,0'), dir = vec('dir', '0,0,1').normalize(), span = Number(Q.get('span') || 0.25), a = innerWidth / innerHeight;
 const cam = new THREE.OrthographicCamera(-span / 2, span / 2, span / 2 / a, -span / 2 / a, 0.001, 4);
 cam.position.copy(at).addScaledVector(dir, 1); cam.up.copy(vec('up', '0,1,0')); cam.lookAt(at);

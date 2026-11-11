@@ -21,7 +21,6 @@ export function makeFingerUniforms(frame, fold, tuning) {
     uRim: { value: new THREE.Vector2(fold.rimWidth, fold.rimStrength) },
     uSkinFilm: { value: tuning.film.skinFactor },
     uWorldToPaint: { value: frame.worldToPaint },
-    uProcSkin: { value: 1 },
   };
 }
 
@@ -125,16 +124,21 @@ export function makeNailMaterial(uniforms) {
   return m;
 }
 
-/** The skin: fold shading around the nail, spilled polish, and (uProcSkin, unused on the real hand) procedural tone. */
-export function makeSkinMaterial(uniforms) {
+/**
+ * The skin: tone baked into the mesh (creases, bumps, open sky; see tools/build-hand.mjs), pinker
+ * fingertips, then fold shading and spilled polish round the active nail.
+ * `tips` is a uniform holding the five fingertip positions in world space.
+ */
+export function makeSkinMaterial(uniforms, tips) {
   const m = new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: 0.55, metalness: 0,
     sheen: 0.45, sheenRoughness: 0.5, sheenColor: srgb('#ffb5a0'), clearcoat: 0.06, clearcoatRoughness: 0.5,
   });
-  m.onBeforeCompile = (shader) => inject(shader, { ...uniforms },
-    'uniform mat4 uWorldToPaint;\nvarying vec3 vPaint;',
-    'vPaint = (uWorldToPaint * modelMatrix * vec4(transformed, 1.0)).xyz;', {
-      decl: 'varying vec3 vPaint;\nuniform float uProcSkin;',
+  m.onBeforeCompile = (shader) => inject(shader, { ...uniforms, uTips: tips },
+    'uniform mat4 uWorldToPaint;\nattribute vec3 tone;\nvarying vec3 vPaint, vTone, vWorld;\nvarying float vUp;',
+    `vec4 skW = modelMatrix * vec4(transformed, 1.0);
+     vPaint = (uWorldToPaint * skW).xyz; vWorld = skW.xyz; vTone = tone; vUp = normalize(mat3(modelMatrix) * normal).z;`, {
+      decl: 'varying vec3 vPaint, vTone, vWorld;\nvarying float vUp;\nuniform vec3 uTips[5];',
       after: {
         color_fragment: /* glsl */`
           vec2 skUV = nlUv(vPaint.xy);
@@ -143,17 +147,17 @@ export function makeSkinMaterial(uniforms) {
           float skSd = mix(9.0, texture2D(tSdf, skUV).r, skIn);
           float skFold = nlFoldW(vPaint.xy) * skIn;
           vec3 skCol = uSkinCol;
-          if (uProcSkin > 0.5) {
-            float top = smoothstep(-0.9, -0.2, vPaint.z);
-            skCol *= mix(vec3(1.06, 0.93, 0.9), vec3(1.0), top);                       // pinker pad
-            skCol *= mix(vec3(1.0), vec3(1.05, 0.95, 0.93), smoothstep(-0.3, 0.9, vPaint.y) * 0.6);
-            skCol *= 1.0 + 0.05 * (nlNoise(vPaint.xy * 14.0) - 0.5) + 0.03 * (nlNoise(vPaint.xy * 70.0) - 0.5);
-            float crease = 0.0;
-            for (int i = 0; i < 3; i++) {
-              float yc = -1.55 - 0.16 * float(i) + 0.03 * sin(vPaint.x * 5.0 + float(i) * 2.0);
-              crease += exp(-pow((vPaint.y - yc) / 0.02, 2.0));
-            }
-            skCol *= 1.0 - 0.14 * crease * top;
+          {
+            float crease = clamp((vTone.x - 0.5) * 2.0, 0.0, 1.0), bump = (vTone.y - 0.5) * 2.0, sky = vTone.z;
+            float back = smoothstep(-0.2, 0.5, vUp);                                   // back of the hand vs palm
+            float tip = 0.0;
+            for (int i = 0; i < 5; i++) { vec3 d = vWorld - uTips[i]; tip += exp(-dot(d, d) / (0.011 * 0.011)); }
+            tip = min(tip, 1.0);
+            skCol *= mix(vec3(1.05, 0.96, 0.94), vec3(1.0), back);                     // the palm is paler and pinker
+            skCol *= mix(vec3(1.0), vec3(1.05, 0.9, 0.88), max(tip * 0.9, clamp(bump, 0.0, 1.0) * 0.8 * back));   // blood shows at fingertips and knuckles
+            skCol *= mix(vec3(1.0), vec3(0.78, 0.6, 0.56), min(crease * 0.8, 0.6));        // creases run darker and redder
+            skCol *= mix(vec3(0.5, 0.3, 0.27), vec3(1.0), smoothstep(0.0, 0.85, sky));  // shade where the light can't reach, warm like skin
+            skCol *= 1.0 + 0.04 * (nlNoise(vWorld.xy * 900.0) - 0.5) + 0.03 * (nlNoise(vWorld.yz * 2600.0) - 0.5);
           }
           // Groove: the skin darkens and warms right at the plate.
           float skGroove = (1.0 - smoothstep(0.0, uGroove.x, skSd)) * skFold;
@@ -178,6 +182,6 @@ export function makeSkinMaterial(uniforms) {
           }`,
       },
     });
-  m.customProgramCacheKey = () => 'skin-1';
+  m.customProgramCacheKey = () => 'skin-2';
   return m;
 }

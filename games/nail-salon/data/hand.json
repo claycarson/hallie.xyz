@@ -4,6 +4,8 @@
   "note": "Left hand, 'Female Hand' by yuzutarou (CC BY 4.0), built by tools/build-hand.mjs. Metres; +x thumb side, +y fingertips, +z out of the back of the hand. Frames are hand-tuned data (PLAN 3.3). shelfZ is only read by the build tool: it removes the model's own free edge above that height (frame z, metres) past bedLength.",
   "active": 1,
   "maxFree": 1.0,
+  "under": "assets/hand/under.bin",
+  "rest": { "centre": [-0.024, 0.0375], "half": [0.047, 0.0975], "radius": 0.03, "height": 0.024, "roll": 0.028 },
   "fold": {
     "sink": 0.05, "sinkBand": 0.04, "lift": 0.02, "crown": 0.02, "edgeThickness": 0.03,
     "smile": 0.10,

@@ -4,6 +4,7 @@ import { RGBELoader } from 'three/addons/RGBELoader.js';
 import { gpuCaps } from './engine/gpu.js';
 import { NailFrame } from './hand/frame.js';
 import { loadHand } from './hand/model.js';
+import { loadUnderside, buildRest } from './hand/rest.js';
 import { outline, sdPolygon, area, SHAPES } from './hand/outline.js';
 import { OutlineSdf } from './hand/sdf.js';
 import { SkinHeight, makePlateZ, buildPlate, buildPlateNormals } from './hand/plate.js';
@@ -22,7 +23,7 @@ const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) thr
 
 async function boot() {
   const [tuning, handData, cameraData, themes, catalog] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog'].map(json));
-  const handGeo = await loadHand(`./${handData.file}`);
+  const [handGeo, under] = await Promise.all([loadHand(`./${handData.file}`), loadUnderside(`./${handData.under}`)]);
   const fixed = Q.has('scene');                       // fixed test scene: nothing drifts
   const state = {
     scene: Q.get('scene') || 'nail', flip: Q.get('flip') === '1',
@@ -60,8 +61,8 @@ async function boot() {
   const frame = new NailFrame(cfg, handData.maxFree);
   scene.add(frame.group);
   const uniforms = makeFingerUniforms(frame, fold, tuning);
-  uniforms.uProcSkin.value = 0;
-  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(uniforms));
+  const tips = { value: handData.fingers.map((f) => new THREE.Vector3(...f.origin).addScaledVector(new THREE.Vector3(...f.tipDir).normalize(), f.bedLength * 0.9).addScaledVector(new THREE.Vector3(...f.normal).normalize(), -0.004)) };
+  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(uniforms, tips));
   scene.add(skinMesh);
   scene.updateMatrixWorld(true);
   frame.update();
@@ -69,8 +70,10 @@ async function boot() {
   const skinMask = skin.maskTexture();
 
   const table = new THREE.Mesh(new THREE.CircleGeometry(0.6, 48), new THREE.MeshStandardMaterial({ roughness: 0.9 }));
-  table.position.z = -0.002;
-  scene.add(table);
+  table.position.z = -0.0005;
+  const rest = buildRest(under, handData.rest);          // cushion + the shadows on the table
+  rest.shadow.position.z = -0.0003;
+  scene.add(table, rest.shadow, rest.cushion);
 
   const sdf = new OutlineSdf(frame.rect);
   const nailMesh = new THREE.Mesh(new THREE.BufferGeometry(), makeNailMaterial(uniforms));
@@ -179,6 +182,8 @@ async function boot() {
     rimL.color.set(L.rim[0]); rimR.color.set(L.rim[1]); rimL.intensity = rimR.intensity = L.rim[2];
     for (const u of [uniforms, ...others.map((o) => o.uniforms)]) { u.uSkinCol.value.set(theme.skin); u.uBedCol.value.set(theme.nailBed); }
     /** @type {THREE.MeshStandardMaterial} */ (table.material).color.set(theme.table);
+    /** @type {THREE.MeshPhysicalMaterial} */ (rest.cushion.material).color.set(theme.cushion);
+    /** @type {THREE.MeshPhysicalMaterial} */ (rest.cushion.material).sheenColor.set(theme.cushion).lerp(new THREE.Color(0xffffff), 0.5);
   }
 
   // ---- camera ------------------------------------------------------------------------------
