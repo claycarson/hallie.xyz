@@ -153,15 +153,16 @@ export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
   const z = (x, y) => {
     const d = Math.max(0, -sdPolygon(outlinePts, x, y));
     const e = smoothstep(0, fold.sinkBand, d);
-    const foldW = 1 - smoothstep(smile(x) - 0.30, smile(x) - 0.12, y);   // lifted clear before it leaves the finger
     const crown = fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x)) * e;
     const top = zFree(x, y) + crown;
-    // At the outline the edge goes `sink` under the real skin, not the smoothed copy: the smooth
-    // surface rides high where the finger's sides fall away, which left the edge in the air.
-    // Only along the bed: near its end the skin is the fingertip falling away.
-    const base = top - fold.lift - fold.sink, rawW = 1 - smoothstep(smile(x) - 0.5, smile(x) - 0.3, y);
-    const under = base + Math.max(-2 * fold.sink, Math.min(0, skin.at(x, y) - fold.sink - base)) * rawW;
-    return top + (under - top) * (1 - e) * foldW;
+    // At the outline the edge tucks `sink` under the real skin wherever the skin is up beside
+    // the plate (the folds), and stays up where the finger falls away. The switch between the
+    // two is steep, so the line where the fold lets go follows a smooth contour of the skin:
+    // a gentle switch crossed the skin at a shallow angle and left a jagged notch.
+    const sk = skin.at(x, y), near = smoothstep(top - fold.lift - 0.09, top - fold.lift - 0.04, sk);
+    const under = Math.max(top - fold.lift - 3 * fold.sink, Math.min(top - fold.lift - fold.sink, sk - fold.sink));
+    const along = 1 - smoothstep(smile(x) - 0.12, smile(x) + 0.02, y);       // never past the bed
+    return top + (under - top) * (1 - e) * near * along;
   };
   /** The plate's own curve, before its edges dip under the folds. */
   z.shell = (x, y) => zFree(x, y) + fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x));

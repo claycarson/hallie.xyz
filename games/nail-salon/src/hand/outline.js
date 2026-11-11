@@ -24,7 +24,8 @@ const TIP = {
 };
 
 const CUTICLE_DEPTH = 0.26;   // how far the U of the cuticle rises at its ends
-const CUTICLE_HALF = 0.47;    // half-width where the cuticle arc meets the walls
+const CUTICLE_HALF = 0.5;     // half-width where the cuticle arc meets the walls: a nail grows
+                              // out at the cuticle's width, so the walls run parallel (Clay)
 const smooth = (t) => t * t * (3 - 2 * t);
 const spow = (v, p) => Math.sign(v) * Math.pow(Math.abs(v), p);
 
@@ -47,7 +48,7 @@ export function outline(shape, length) {
     const a = Math.PI * i / 32, c = Math.cos(a), s = Math.sin(a);
     put(-CUTICLE_HALF * spow(c, 2 / 2.6), yc * (1 - Math.pow(s, 2 / 2.2)));
   }
-  for (let j = 0; j < 16; j++) {                       // right wall, slight taper
+  for (let j = 0; j < 16; j++) {                       // right wall
     const v = j / 16;
     put(CUTICLE_HALF + (0.5 - CUTICLE_HALF) * smooth(v), yc + (ys - yc) * v);
   }
