@@ -12,6 +12,7 @@ import { PaintTargets } from './paint/targets.js';
 import { StampRenderer } from './paint/stamps.js';
 import { StrokeEngine } from './paint/stroke.js';
 import { Leveler, WET_HZ } from './paint/leveling.js';
+import { DesignPainter, nailLayers } from './paint/design.js';
 import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
@@ -26,7 +27,7 @@ const HAND_KEY = 'nailSalon.handDirection';
 
 async function boot() {
   const bootStart = performance.now();
-  const [tuning, handData, cameraData, themes, catalog] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog'].map(json));
+  const [tuning, handData, cameraData, themes, catalog, designs] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog', 'designs'].map(json));
   const [handGeo, under] = await Promise.all([loadHand(`./${handData.file}`), loadUnderside(`./${handData.under}`)]);
   const tune = parseTune(Q.get('tune'));                // ?tune=… : frame editor offsets
   handData.fingers = handData.fingers.map((f) => tuned(f, tune[f.finger]));
@@ -126,6 +127,7 @@ async function boot() {
   const flush = () => {
     if (!engine.count) return;
     active.wet.left = tuning.wet.drySeconds + 0.5;
+    active.mapColor = state.polish.color;
     stamps.flush(renderer, engine.stamps, engine.count, big);
     state.stamps += engine.count; engine.reset(); state.dirty = true; active.dirty = true;
   };
@@ -171,6 +173,30 @@ async function boot() {
     stamps.setPolish(new THREE.Color(p.color), catalog.finishes[p.finish]);   // sRGB hex → linear
     brushModel.setPolish(p.color);
     engine.dip();
+  }
+
+  // ---- applyDesign (PLAN §4.7): paint every nail straight from a Design, no brush ----------
+  const designer = new DesignPainter(tuning);
+  /**
+   * Replace all five nails with a Design (§9.3): its shape, polish (accent nail too), french or
+   * ombre tip and top coat, dry. Each nail keeps a record (§4.6) of the parts that are objects.
+   * @param {any} design @param {{ chipped?: number }} [o] chipped 0…1 for old polish
+   */
+  async function applyDesign(design, o = {}) {
+    flush();
+    if (engine.down) engine.end();
+    if (design.shape && design.shape !== active.shape) setShape(design.shape, active.free);
+    for (const f of fingers) {
+      const L = nailLayers(design, f.id, catalog);
+      designer.paint(renderer, f, L, f.bound, o);
+      f.wet.left = 0; f.wet.debt = 0;
+      f.dirty = f === active;                        // the active one is in the shared set
+      f.mapColor = L.base?.color;
+      f.record = { finger: f.id, shape: f.shape, freeLength: f.free, polish: L.base?.id ?? null, topCoat: L.topCoat, dry: true, oldPolish: !!o.chipped, art: L.objects };
+    }
+    state.dirty = true;
+    await Promise.all(fingers.map((f) => f.nstats.refresh(renderer, true)));
+    drawMap();
   }
 
   function setRequest(id) {
@@ -385,7 +411,7 @@ async function boot() {
       const [x, y] = at(pts[i]), bx = 75 + (x - 75) * 0.6;
       const deg = Math.atan2(y - edge, x - bx) * 180 / Math.PI - 90, cov = Math.min(1, f.stats.coverage / tuning.film.covered);
       const nail = `<g class="nail${f === active ? ' on' : ''}" data-finger="${f.id}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${deg.toFixed(1)})${f === active ? ' scale(1.3)' : ''}">
-        <path class="bare" d="${NAIL}"/><path d="${NAIL}" fill="${state.polish.color}" fill-opacity="${cov.toFixed(2)}"/><path class="edge" d="${NAIL}"/></g>`;
+        <path class="bare" d="${NAIL}"/><path d="${NAIL}" fill="${f.mapColor || state.polish.color}" fill-opacity="${cov.toFixed(2)}"/><path class="edge" d="${NAIL}"/></g>`;
       return { stalk: `<path d="M${bx.toFixed(1)} ${edge} L${x.toFixed(1)} ${y.toFixed(1)}"/>`, nail };
     });
     map.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><g class="palm" data-hand="1"><rect x="35" y="${palmY - 16}" width="80" height="32" rx="14"/><g class="stalks">${parts.map((p) => p.stalk).join('')}</g></g>${parts.map((p) => p.nail).join('')}</svg>`;
@@ -397,6 +423,14 @@ async function boot() {
     else if (t.closest('[data-hand]')) goTo('hand');
   });
   document.body.dataset.view = rig.view;
+  // ?design=<id from data/designs.json> paints every nail with it; &chipped=0…1 wears it.
+  if (Q.has('design')) {
+    const d = designs.designs[Q.get('design')];
+    if (!d) throw new Error(`unknown design: ${Q.get('design')}`);
+    setRequest(d.polish);
+    if (d.polish && !Q.has('polish')) setPolish(d.polish);     // the bottle holds the design's polish
+    await applyDesign(d, { chipped: Number(Q.get('chipped') || 0) });
+  }
   drawMap();
 
   if (Q.get('debug') === 'frames') {
@@ -460,6 +494,10 @@ async function boot() {
   const api = {
     info: () => ({ finger: active.id, view: rig.view, shape: active.shape, free: active.free, length: active.info.length, bed: active.frame.bed, rect: active.frame.rect, caps, load: engine.load, stamps: state.stamps, frames }),
     sd: (x, y) => active.sd(x, y), setShape, setPolish, setRequest, nextFrame,
+    /** Paint every nail from a Design (an object, or an id in data/designs.json). */
+    applyDesign: (d, o) => applyDesign(typeof d === 'string' ? designs.designs[d] : d, o),
+    /** Each nail's record from the last applyDesign (PLAN §4.6), or null. */
+    records: () => fingers.map((f) => f.record ?? null),
     three: { scene, camera, renderer, key },
     setTheme: (id) => setTheme(themes.find((t) => t.id === id) || themes[0]),
     view: (view, up = rig.up) => { rig.view = view; rig.set(up); document.body.dataset.view = view; placeCamera(); return nextFrame(); },

@@ -1,0 +1,13 @@
+{
+  "note": "Designs (PLAN §9.3) by id, for fixed scenes (?design=id) and tests. Request cards, old polish and 'same as last time' will use the same shape.",
+  "designs": {
+    "test-red": { "polish": "cream-red" },
+    "test-french": { "polish": "cream-rose", "art": [{ "kind": "french", "polish": "cream-white" }] },
+    "test-ombre": { "polish": "cream-pink", "art": [{ "kind": "ombre", "polish": "cream-lilac" }] },
+    "test-accent": { "polish": "cream-lilac", "accent": { "finger": 3, "polish": "glitter-gold" } },
+    "test-matte": { "polish": "cream-black", "topCoat": "matte" },
+    "test-chrome": { "polish": "chrome-silver", "shape": "almond" },
+    "test-holo": { "polish": "holo-lilac", "shape": "coffin" },
+    "test-bare": { "polish": null }
+  }
+}

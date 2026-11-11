@@ -52,6 +52,29 @@ float footprint(out float sd) {
   return soft * streak * wall * skin;
 }`;
 
+/**
+ * Glitter and shimmer flakes at paint point p for a finish's flake numbers F (cells per nail
+ * width, tilt, share that sparkle): rg = normal tilt, b = sparkle. Needs `hash`. Flakes are fixed
+ * in the nail's own space, so going over a spot never reshuffles them, and the brush and
+ * applyDesign lay down the same ones. Two grids turned against each other, with flakes of
+ * different sizes and some left out, so no row or column shows.
+ */
+export const FLAKES = /* glsl */`
+vec3 flakeCell(vec2 g, float seed, vec3 F) {
+  vec2 cell = floor(g) + seed;
+  if (hash(cell + 71.3) < 0.3 || F.x < 0.5) return vec3(0.0);
+  vec2 local = fract(g) - 0.5 - (vec2(hash(cell + 3.1), hash(cell + 9.7)) - 0.5) * 0.5;
+  float r = mix(0.2, 0.4, hash(cell + 23.9));
+  float disc = 1.0 - smoothstep(r * 0.8, r, length(local));   // round flakes
+  vec2 tilt = (vec2(hash(cell), hash(cell + 17.3)) - 0.5) * F.y * disc;
+  return vec3(tilt, step(1.0 - F.z, hash(cell + 41.7)) * disc);
+}
+vec3 nailFlakes(vec2 p, vec3 F) {
+  vec3 f = flakeCell(mat2(0.862, -0.506, 0.506, 0.862) * p * F.x, 0.0, F);
+  if (f.z == 0.0 && f.x == 0.0 && f.y == 0.0) f = flakeCell(mat2(0.454, 0.891, -0.891, 0.454) * p * F.x * 1.37, 53.0, F);
+  return f;
+}`;
+
 function stampMaterial(shared, body, blend) {
   return new THREE.ShaderMaterial({
     uniforms: { ...shared, ...(blend.uniforms || {}) },
@@ -104,22 +127,10 @@ export class StampRenderer {
     this.uFlake = { value: new THREE.Vector3() };
     this.detail = stampMaterial(shared, /* glsl */`
       uniform vec3 uFlake;      // cells per nail width, tilt, share that sparkle
-      vec3 flakes(vec2 g, float seed) {
-        vec2 cell = floor(g) + seed;
-        if (hash(cell + 71.3) < 0.3 || uFlake.x < 0.5) return vec3(0.0);
-        vec2 local = fract(g) - 0.5 - (vec2(hash(cell + 3.1), hash(cell + 9.7)) - 0.5) * 0.5;
-        float r = mix(0.2, 0.4, hash(cell + 23.9));
-        float disc = 1.0 - smoothstep(r * 0.8, r, length(local));   // round flakes
-        vec2 tilt = (vec2(hash(cell), hash(cell + 17.3)) - 0.5) * uFlake.y * disc;
-        return vec3(tilt, step(1.0 - uFlake.z, hash(cell + 41.7)) * disc);
-      }
+      ${FLAKES}
       void main() {
         float sd; float a = min(1.0, footprint(sd) * vParams.y * 1.6);
-        // Flakes are fixed in the nail's own space, so going over a spot never reshuffles them.
-        // Two grids turned against each other, with flakes of different sizes and some left out,
-        // so no row or column shows.
-        vec3 f = flakes(mat2(0.862, -0.506, 0.506, 0.862) * vP * uFlake.x, 0.0);
-        if (f.z == 0.0 && f.x == 0.0 && f.y == 0.0) f = flakes(mat2(0.454, 0.891, -0.891, 0.454) * vP * uFlake.x * 1.37, 53.0);
+        vec3 f = nailFlakes(vP, uFlake);
         gl_FragColor = vec4(0.5 + f.xy, f.z, a);
       }`,
       { uniforms: { uFlake: this.uFlake }, src: THREE.SrcAlphaFactor, dst: THREE.OneMinusSrcAlphaFactor, srcA: THREE.OneFactor, dstA: THREE.OneFactor });
