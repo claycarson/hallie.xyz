@@ -129,12 +129,14 @@ export class SkinHeight {
 
 /**
  * Height of the nail plate over the paint frame.
- * Over the bed it rides `lift` above the skin; along the cuticle and the side walls it dips
- * `sink` below the skin within `sinkBand` of the outline, so the depth test draws the fold
- * over the plate's edge. Past the bed end it leaves the finger along its own tangent.
+ * Over the bed it rides `lift` above the skin. Mid-cuticle its edge dips under the fold within
+ * `sinkBand` of the outline, so the fold draws over it; at the side walls it stays just clear
+ * of the skin, so the outline itself is the edge on screen (straight, never a jagged crossing).
+ * Past the bed end it leaves the finger along its own tangent.
  */
 export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
-  const bed = frame.bed;
+  const bed = frame.bed, cuticleY = outlinePts[1];        // the cuticle arc's ends, where the walls begin
+  const SIDE_CLEAR = 0.012;                               // nail widths above the skin at the side walls
   const smile = (x) => bed - fold.smile * 4 * x * x;
   // The plate leaves the finger a little before the bed ends and runs on along its own tangent,
   // taken from well back on the bed: the skin right at the bed end is the fingertip dropping away.
@@ -155,14 +157,16 @@ export function makePlateZ(frame, outlinePts, skin, fold, cfg) {
     const e = smoothstep(0, fold.sinkBand, d);
     const crown = fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x)) * e;
     const top = zFree(x, y) + crown;
-    // At the outline the edge tucks `sink` under the real skin wherever the skin is up beside
-    // the plate (the folds), and stays up where the finger falls away. The switch between the
-    // two is steep, so the line where the fold lets go follows a smooth contour of the skin:
-    // a gentle switch crossed the skin at a shallow angle and left a jagged notch.
-    const sk = skin.at(x, y), near = smoothstep(top - fold.lift - 0.09, top - fold.lift - 0.04, sk);
-    const under = Math.max(top - fold.lift - 3 * fold.sink, Math.min(top - fold.lift - fold.sink, sk - fold.sink));
-    const along = 1 - smoothstep(smile(x) - 0.12, smile(x) + 0.02, y);       // never past the bed
-    return top + (under - top) * (1 - e) * near * along;
+    // The edge's line on screen must come from the outline itself, never from where the plate
+    // happens to cross the skin: the skin height is a grid, and every crossing came out jagged.
+    // So the sides stay just clear of the skin (the outline draws a straight edge) and only the
+    // cuticle tucks under its fold, steeply, where the crossing is short and clean.
+    const sk = Math.max(skin.at(x, y), skin.at(x - 0.02, y), skin.at(x + 0.02, y));
+    // Full tuck mid-cuticle, none at the corners: stopping it at the walls left a tooth there.
+    const prox = (1 - smoothstep(cuticleY * 0.5, cuticleY * 1.1, y)) * (1 - smoothstep(0.28, 0.46, Math.abs(x)));
+    const side = Math.max(top, sk + SIDE_CLEAR);
+    const tuck = Math.min(top - fold.lift - fold.sink, skin.at(x, y) - 2 * fold.sink);
+    return top + (side + (tuck - side) * prox - top) * (1 - e);
   };
   /** The plate's own curve, before its edges dip under the folds. */
   z.shell = (x, y) => zFree(x, y) + fold.crown * cfg.dome * (1 - Math.min(1, 4 * x * x));
