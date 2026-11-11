@@ -19,7 +19,7 @@ const MAX_FINISH = 9;
 const FRAG = /* glsl */`
 precision highp float;
 uniform sampler2D tSdf, tPig, tId;
-uniform float uTexel, uCovered, uMargin, uMode, uReqOn, uDist;
+uniform float uTexel, uCovered, uJelly, uMargin, uMode, uReqOn, uDist;
 uniform vec3 uReq;
 uniform float uAllowed[${MAX_FINISH}];
 varying vec2 vUv;
@@ -40,10 +40,11 @@ void main() {
     float sd = texture2D(tSdf, uv).r;
     if (uMode > 0.5) { acc.r += step(sd, 0.0); acc.g += step(uMargin, sd); continue; }
     vec4 p = texture2D(tPig, uv);
-    float film = clamp(p.a, 0.0, 1.0), cov = step(sd, 0.0) * step(uCovered, film);
+    int id = int(floor(texture2D(tId, uv).r * 255.0 + 0.5));
+    // Jelly (finish 6) is see-through by design: it counts as covered from a thinner film.
+    float film = clamp(p.a, 0.0, 1.0), cov = step(sd, 0.0) * step(id == 6 ? uJelly : uCovered, film);
     acc.r += cov; acc.g += film;
     acc.b += cov * uReqOn * step(distance(oklab(p.rgb / max(p.a, 1e-4)), req), uDist);
-    int id = int(floor(texture2D(tId, uv).r * 255.0 + 0.5));
     float ok = 0.0;
     for (int k = 0; k < ${MAX_FINISH}; k++) if (k == id) ok = uAllowed[k];
     acc.a += cov * ok;
@@ -58,7 +59,7 @@ export class NailStats {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         tSdf: { value: null }, tPig: { value: null }, tId: { value: null },
-        uTexel: { value: 1 / 1024 }, uCovered: { value: tuning.film.covered }, uMargin: { value: tuning.stats.spillMargin },
+        uTexel: { value: 1 / 1024 }, uCovered: { value: tuning.film.covered }, uJelly: { value: tuning.film.jellyCovered }, uMargin: { value: tuning.stats.spillMargin },
         uMode: { value: 0 }, uReqOn: { value: 0 }, uDist: { value: tuning.stats.colorDist },
         uReq: { value: new THREE.Color() }, uAllowed: { value: new Float32Array(MAX_FINISH) },
       },

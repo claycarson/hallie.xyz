@@ -69,6 +69,9 @@
   #swab { top: calc(50% - 75px - 160px); } #remover { top: calc(50% - 75px - 86px); }
   #oops { top: calc(50% + 75px + 22px); }
   #oops[disabled] { opacity: .35; cursor: default; }
+  /* Clear coats, a second column beside the tray: base, gloss top coat, matte top coat. */
+  .coat { right: calc(max(32px, env(safe-area-inset-right)) + 84px); }
+  #base { top: calc(50% - 75px - 160px); } #gloss { top: calc(50% - 75px - 86px); } #matte { top: calc(50% - 75px - 12px); }
   #bottle.on svg { filter: drop-shadow(0 0 6px var(--accent, #c9897a)) drop-shadow(0 6px 10px rgba(60, 30, 20, .25)); }
   #boot-error { position: fixed; inset: auto 12px 12px 12px; padding: 10px; background: #fff; color: #a00; border-radius: 8px; display: none; }
 </style>
@@ -98,6 +101,18 @@
   <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="17" fill="#fff" stroke="currentColor" stroke-width="2.5"/>
     <circle cx="32" cy="32" r="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 4" opacity=".6"/>
     <path d="M27 30q5 -6 10 0" fill="none" stroke="#8fc8e8" stroke-width="3" stroke-linecap="round"/></svg>
+</button>
+<button id="base" class="tool coat" data-tool="base" type="button" aria-label="Base coat">
+  <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="27" y="10" width="10" height="14" rx="3" fill="#3b2f33"/>
+    <rect x="25" y="23" width="14" height="5" rx="2" fill="#d9c7bd"/><rect x="19" y="27" width="26" height="27" rx="8" fill="#fff" stroke="currentColor" stroke-width="2.5"/><path d="M24 34v12" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"/><text x="32" y="47" font-size="13" font-weight="700" text-anchor="middle" fill="currentColor" font-family="Helvetica">B</text></svg>
+</button>
+<button id="gloss" class="tool coat" data-tool="gloss" type="button" aria-label="Shiny top coat">
+  <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="27" y="10" width="10" height="14" rx="3" fill="#3b2f33"/>
+    <rect x="25" y="23" width="14" height="5" rx="2" fill="#d9c7bd"/><rect x="19" y="27" width="26" height="27" rx="8" fill="#fff" stroke="currentColor" stroke-width="2.5"/><path d="M32 33l2.2 4.8 4.8 2.2-4.8 2.2L32 47l-2.2-4.8-4.8-2.2 4.8-2.2z" fill="#f2c94c"/></svg>
+</button>
+<button id="matte" class="tool coat" data-tool="matte" type="button" aria-label="Matte top coat">
+  <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="27" y="10" width="10" height="14" rx="3" fill="#3b2f33"/>
+    <rect x="25" y="23" width="14" height="5" rx="2" fill="#d9c7bd"/><rect x="19" y="27" width="26" height="27" rx="8" fill="#e6dcd6" stroke="currentColor" stroke-width="2.5"/><circle cx="27" cy="36" r="1.6" fill="#b9a9a0"/><circle cx="35" cy="41" r="1.6" fill="#b9a9a0"/><circle cx="30" cy="46" r="1.6" fill="#b9a9a0"/><circle cx="38" cy="34" r="1.6" fill="#b9a9a0"/></svg>
 </button>
 <button id="oops" class="tool" type="button" aria-label="Oops: undo" disabled>
   <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M22 28h16a10 10 0 0 1 0 20h-8" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>

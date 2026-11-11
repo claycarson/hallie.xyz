@@ -22,6 +22,7 @@
   },
   "film": {
     "covered": 0.75,
+    "jellyCovered": 0.5,
     "skinFactor": 0.7
   },
   "stats": {
@@ -50,11 +51,15 @@
     "remover": { "radius": 0.6, "alpha": 0.085, "idClear": 0.05 },
     "note": "erasers: each stamp keeps 1 - pad x alpha. swab.edge = sd band where the swab starts working past the outline (nail widths); remover clears the finish under film idClear"
   },
+  "coats": {
+    "radius": 0.3, "alpha": 0.8, "flood": 0.5, "advanceMs": 700, "perWidth": 40,
+    "glossRoughness": 0.1, "matteRoughness": 0.85, "glossClearcoat": 0.9, "baseClearcoat": 0.3,
+    "note": "base and top coat brush (PLAN M1.4). flood = share of the nail touched before the coat fills it; advanceMs = pause before moving to the next nail"
+  },
   "design": {
     "edgeAA": 0.01,
     "french": [0.25, 0.16, 0.012],
     "ombre": [0.25, 0.85],
-    "topCoatRoughness": { "gloss": 0.08, "matte": 0.85 },
     "note": "french = [tip share of the nail length, smile depth in widths, edge softness]; ombre = [blend start, end] as shares of the length"
   },
   "brushModel": {

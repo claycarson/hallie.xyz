@@ -14,6 +14,9 @@ import { StrokeEngine } from './paint/stroke.js';
 import { Leveler, WET_HZ } from './paint/leveling.js';
 import { DesignPainter, nailLayers } from './paint/design.js';
 import { SpillAtlas } from './paint/spill.js';
+import { TouchGrid } from './paint/coverage.js';
+import { CoatFlood } from './paint/coat.js';
+import { STAMP_FLOATS } from './paint/stroke.js';
 import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
@@ -25,6 +28,8 @@ const Q = new URLSearchParams(location.search);
 const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) throw new Error(`data/${name}.json ${r.status}`); return r.json(); });
 
 const HAND_KEY = 'nailSalon.handDirection';
+
+/** @typedef {'polish' | 'swab' | 'remover' | 'base' | 'gloss' | 'matte'} Tool */
 
 async function boot() {
   const bootStart = performance.now();
@@ -38,7 +43,8 @@ async function boot() {
     scene: Q.get('scene') || Q.get('view') || 'nail',
     shape: Q.get('shape') || 'round', free: Number(Q.get('free') ?? NaN),
     theme: themes.find((t) => t.id === Q.get('theme')) || themes[0],
-    polish: catalog.polishes[0], dirty: true, lastStats: 0, stamps: 0, tool: /** @type {'polish' | 'swab' | 'remover'} */ ('polish'),
+    polish: catalog.polishes[0], dirty: true, lastStats: 0, stamps: 0, tool: /** @type {Tool} */ ('polish'),
+    advanceAt: 0,      // when a flooded coat moves on to the next nail (0 = not waiting)
   };
 
   // ---- renderer, scene, light --------------------------------------------------------------
@@ -81,6 +87,7 @@ async function boot() {
   scene.updateMatrixWorld(true);
   const fingers = handData.fingers.map((c) => new Finger(c, { scene, skinMesh, renderer, handData, tuning, caps }));
   for (const f of fingers) {
+    f.coats = { base: false, top: null };
     spillU.uW2P.value[f.id].copy(f.frame.worldToPaint);
     const r = f.frame.rect; spillU.uRects.value[f.id].set(r.x0, r.y0, r.w, r.h);
   }
@@ -134,17 +141,55 @@ async function boot() {
   function wetStep() {
     for (const f of fingers) {
       if (f.wet.left <= 0) continue;
-      if (f === active) wetTick(); else leveler.dryOnly(renderer, f.targets, tuning.wet.drySeconds, f.wet);
-      f.wet.left -= 1 / WET_HZ;
+      // Fresh polish levels; a clear coat's shine only dries (levelling would blur the dry polish
+      // under it). Nails not being painted only dry.
+      if (f === active && f.wet.level > 0) wetTick();
+      else { leveler.dryOnly(renderer, f === active ? big : f.targets, tuning.wet.drySeconds, f.wet); if (f === active) { active.dirty = true; state.dirty = true; } }
+      f.wet.left -= 1 / WET_HZ; f.wet.level -= 1 / WET_HZ;
     }
   }
 
   const flush = () => {
     if (!engine.count) return;
-    if (state.tool === 'polish') { active.wet.left = tuning.wet.drySeconds + 0.5; active.mapColor = state.polish.color; }
+    if (state.tool === 'polish') { active.wet.left = active.wet.level = tuning.wet.drySeconds + 0.5; active.mapColor = state.polish.color; }
+    if (state.tool === 'remover' && (active.coats.base || active.coats.top)) setCoats(active, { base: false, top: null });   // coats come off first
+    const coat = coatOf(state.tool);
+    if (coat) { active.wet.left = tuning.wet.drySeconds + 0.5; touch.mark(engine.stamps, engine.count, STAMP_FLOATS); }
     stamps.flush(renderer, engine.stamps, engine.count, big);
     state.stamps += engine.count; engine.reset(); state.dirty = true; active.dirty = true;
+    if (coat && touch.share >= tuning.coats.flood && !hasCoat(active, state.tool)) floodCoat();
   };
+
+  // ---- clear coats: base, gloss, matte (PLAN §7 flood rule, M1.4) ----------------------------
+  // A coat brush leaves only a wet shine. Once it has touched half the nail, the coat spreads to
+  // fill the nail, and a moment later the camera moves to the next nail that still needs it.
+  const touch = new TouchGrid(tuning.coats.perWidth);
+  const coatFlood = new CoatFlood();
+  /** @param {Tool} tool */
+  const coatOf = (tool) => (tool === 'base' || tool === 'gloss' || tool === 'matte' ? tool : null);
+  const hasCoat = (f, tool) => (tool === 'base' ? f.coats.base : f.coats.top === tool);
+  /** Set a nail's coats; its shader shows them. */
+  function setCoats(f, coats) {
+    f.coats = { ...coats };
+    f.uniforms.uCoat.value.set(coats.base ? 1 : 0, coats.top === 'gloss' ? 1 : coats.top === 'matte' ? 2 : 0);
+  }
+  /** Start counting touches afresh on the active nail. */
+  const resetTouch = () => touch.setOutline(active.info.points, active.info.length);
+  function floodCoat() {
+    const tool = state.tool;
+    coatFlood.wet(renderer, active, big);
+    setCoats(active, tool === 'base' ? { ...active.coats, base: true } : { ...active.coats, top: tool });
+    state.advanceAt = performance.now() + tuning.coats.advanceMs;
+  }
+  /** After a flood: the next nail on screen (to the right, then from the left) without this coat. */
+  function advanceCoat() {
+    state.advanceAt = 0;
+    const tool = state.tool;
+    if (!coatOf(tool)) return;
+    const order = screenOrder(), i = order.indexOf(active);
+    const next = [...order.slice(i + 1), ...order.slice(0, i)].find((f) => !hasCoat(f, tool));
+    if (next) goTo('nail', next.id);
+  }
   engine.onFull = flush;
 
   /**
@@ -165,6 +210,7 @@ async function boot() {
     big.copyFrom(renderer, f.targets);
     bindActive();
     refreshSpill();
+    resetTouch();
     f.frame.group.add(brushModel.root, brushModel.shadow);
     state.dirty = true;
     perf.switchMs = performance.now() - t0;
@@ -175,14 +221,16 @@ async function boot() {
   const paintBytes = () => big.bytes + undo.bytes + spill.bytes + fingers.reduce((n, f) => n + f.targets.bytes, 0) + big.size * big.size * (caps.halfFloat ? 8 : 4);
 
   // ---- tools: the polish brush, the swab and the remover pad (PLAN §7, §8) -------------------
-  /** @param {'polish' | 'swab' | 'remover'} name */
+  /** @param {Tool} name */
   function setTool(name) {
     if (engine.down) return false;
     flush();
     state.tool = name;
-    const T = tuning.tools;
-    engine.setTool(name === 'polish' ? null : T[name]);
-    stamps.setEraser(name === 'polish' ? null : name, T.swab.edge, T.remover.idClear);
+    state.advanceAt = 0;
+    const T = tuning.tools, coat = coatOf(name);
+    engine.setTool(name === 'polish' ? null : coat ? tuning.coats : T[name]);
+    stamps.setEraser(name === 'polish' ? null : coat ? 'coat' : name, T.swab.edge, T.remover.idClear);
+    resetTouch();
     // The 3D brush shows only for polish (loop: brushModel.update). Swab and pad models: later.
     for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('on', b.getAttribute('data-tool') === name);
     return true;
@@ -192,25 +240,26 @@ async function boot() {
   // Just before every stroke (any tool), the active nail's whole paint set is copied aside. Oops
   // copies it back; if she has moved on, the camera goes back to that nail first.
   const undo = new PaintTargets(tuning.paint.activeSize, caps);
-  /** @type {{ finger: Finger, wet: number, mapColor: string | undefined } | null} */
+  /** @type {{ finger: Finger, wet: number, level: number, mapColor: string | undefined, coats: any } | null} */
   let undoFrom = null;
   const oopsBtn = document.getElementById('oops');
   const showOops = () => oopsBtn?.toggleAttribute('disabled', !undoFrom);
   function snapshot() {
     flush();
     undo.copyFrom(renderer, big);
-    undoFrom = { finger: active, wet: active.wet.left, mapColor: active.mapColor };
+    undoFrom = { finger: active, wet: active.wet.left, level: active.wet.level, mapColor: active.mapColor, coats: { ...active.coats } };
     showOops();
   }
   async function undoLast() {
     if (!undoFrom || engine.down) return false;
     flush();
-    const { finger: f, wet: w, mapColor } = undoFrom;
+    const { finger: f, wet: w, level, mapColor, coats } = undoFrom;
     // On another nail: go back to it first, so she sees what Oops did and the restore is full size.
     if (f !== active && !goTo('nail', f.id)) return false;
     undoFrom = null; showOops();
     big.copyFrom(renderer, undo); bindActive(); active.dirty = true;
-    f.wet.left = w; f.mapColor = mapColor;
+    f.wet.left = w; f.wet.level = level; f.mapColor = mapColor;
+    setCoats(f, coats); resetTouch(); state.advanceAt = 0;
     state.dirty = true;
     await f.nstats.refresh(renderer, true);
     drawMap();
@@ -222,6 +271,7 @@ async function boot() {
     for (const f of fingers) f.setShape(renderer, shape, free);
     bindActive();
     refreshSpill();
+    resetTouch();
     state.dirty = true;
   }
 
@@ -248,9 +298,10 @@ async function boot() {
     for (const f of fingers) {
       const L = nailLayers(design, f.id, catalog);
       designer.paint(renderer, f, L, f.bound, o);
-      f.wet.left = 0; f.wet.debt = 0;
+      f.wet.left = 0; f.wet.level = 0; f.wet.debt = 0;
       f.dirty = f === active;                        // the active one is in the shared set
       f.mapColor = L.base?.color;
+      setCoats(f, { base: false, top: L.topCoat });
       f.record = { finger: f.id, shape: f.shape, freeLength: f.free, polish: L.base?.id ?? null, topCoat: L.topCoat, dry: true, oldPolish: !!o.chipped, art: L.objects };
     }
     state.dirty = true;
@@ -541,6 +592,7 @@ async function boot() {
     active.frame.update();
     flush();
     if (!fixed) wetAdvance(dt);
+    if (state.advanceAt && now >= state.advanceAt && !engine.down && !rig.moving) advanceCoat();
     sound.update(engine.down ? engine.speed : 0, engine.load);
     if (state.dirty && now - state.lastStats > tuning.stats.intervalMs) {
       state.dirty = false; state.lastStats = now;
@@ -596,7 +648,10 @@ async function boot() {
     stampCount: () => state.stamps + engine.count,
     /** Where a paint-frame point is on screen, in CSS pixels. */
     project: (x, y) => paintToClient(x, y),
-    clear: () => { big.clear(renderer); for (const f of fingers) { f.targets.clear(renderer); f.wet.left = 0; f.dirty = false; f.nstats.last = { coverage: 0, evenness: 1, colorMatch: 0, finishMatch: 0, spill: 0 }; } refreshSpill(); undoFrom = null; showOops(); engine.dip(); state.dirty = true; return nextFrame(); },
+    clear: () => { big.clear(renderer); for (const f of fingers) { f.targets.clear(renderer); f.wet.left = 0; f.wet.level = 0; f.dirty = false; f.nstats.last = { coverage: 0, evenness: 1, colorMatch: 0, finishMatch: 0, spill: 0 }; setCoats(f, { base: false, top: null }); } refreshSpill(); resetTouch(); state.advanceAt = 0; undoFrom = null; showOops(); engine.dip(); state.dirty = true; return nextFrame(); },
+    coats: () => fingers.map((f) => ({ ...f.coats })), touchShare: () => touch.share,
+    /** Wait until a pending coat auto-advance has happened (or there is none) and the camera has arrived. */
+    async settle() { while (state.advanceAt || rig.moving) await nextFrame(); await nextFrame(); },
     setTool, undo: undoLast, canUndo: () => !!undoFrom, tool: () => state.tool,
     dip: () => engine.dip(),
     tapBottle: dipBrush,

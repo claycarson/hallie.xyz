@@ -8,13 +8,14 @@ export { nailLayers } from './layers.js';
 // applyDesign (PLAN §4.7): fill a nail's paint targets straight from a Design (§9.3), with no
 // brush. One full-target pass per target replaces whatever was there: the polish flooded at
 // film 1 inside the outline, its finish in Material, Detail and Id, nothing outside (no spill).
-// French and ombre are a second polish over the tip; the accent nail gets its own polish.
+// French and ombre are a second polish over the tip; the accent nail gets its own polish. The top
+// coat is not painted here: it is the nail's coat state (main.js setCoats), like a brushed one.
 
 const HEAD = /* glsl */`
 precision highp float;
 uniform sampler2D tSdf;
 uniform vec4 uRect;
-uniform float uLen, uMode, uChip, uSeed, uTopRough, uAA, uHasBase;
+uniform float uLen, uMode, uChip, uSeed, uAA, uHasBase;
 uniform vec3 uFrench;     // tip share of the length, smile depth, edge softness
 uniform vec2 uOmbre;      // blend start and end, as shares of the length
 uniform vec3 uFlakeA, uFlakeB;
@@ -63,14 +64,13 @@ export class DesignPainter {
     const D = tuning.design;
     this.u = {
       tSdf: { value: null }, uRect: { value: new THREE.Vector4() }, uLen: { value: 1 }, uMode: { value: 0 },
-      uChip: { value: 0 }, uSeed: { value: 0 }, uTopRough: { value: -1 }, uAA: { value: D.edgeAA }, uHasBase: { value: 1 },
+      uChip: { value: 0 }, uSeed: { value: 0 }, uAA: { value: D.edgeAA }, uHasBase: { value: 1 },
       uFrench: { value: new THREE.Vector3(...D.french) }, uOmbre: { value: new THREE.Vector2(...D.ombre) },
       uFlakeA: { value: new THREE.Vector3() }, uFlakeB: { value: new THREE.Vector3() },
       uColA: { value: new THREE.Color() }, uColB: { value: new THREE.Color() },
       uMatA: { value: new THREE.Vector4() }, uMatB: { value: new THREE.Vector4() },
       uIdA: { value: 0 }, uIdB: { value: 0 },
     };
-    this.topRough = D.topCoatRoughness;
     // Same layout as the brush writes (PLAN §4.1): premultiplied pigment, film in alpha.
     this.pigment = pass(/* glsl */`
       uniform vec3 uColA, uColB;
@@ -80,7 +80,6 @@ export class DesignPainter {
       void main() {
         vec2 p = paintP();
         vec4 m = mix(uMatA, uMatB, overShare(p));
-        if (uTopRough >= 0.0) m.g = uTopRough;
         gl_FragColor = mix(vec4(0.0, 0.3, 0.0, 0.0), m, step(0.001, film(p)));   // bare = the cleared value
       }`);
     this.detail = pass(/* glsl */`
@@ -112,7 +111,6 @@ export class DesignPainter {
     u.uMode.value = L.mode === 'ombre' ? 2 : L.mode === 'french' ? 1 : 0;
     u.uChip.value = o.chipped || 0;
     u.uSeed.value = finger.id + 1;
-    u.uTopRough.value = L.topCoat ? this.topRough[L.topCoat] : -1;
     const set = (p, col, mat, flake, id) => {
       if (!p) return;
       const F = p.finishData;

@@ -39,8 +39,9 @@ export class Finger {
     this.info = outline('round', 1);
     this.plateZ = /** @type {any} */ ((x, y) => 0);
     this.shape = 'round'; this.free = 0;
-    /** Seconds of wetness left, and the drying pass's fractional steps. */
-    this.wet = { left: 0, debt: 0 };
+    /** Seconds of wetness left (shine), of fresh polish left (levelling), and the drying pass's
+     *  fractional steps. A clear coat sets only `left`. */
+    this.wet = { left: 0, level: 0, debt: 0 };
     /** Painted (or leveled) since it was last copied down from the shared set. */
     this.dirty = false;
     /** Its own stats reader, so each nail's numbers are read from whichever set holds its paint. */

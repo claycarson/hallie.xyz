@@ -7,6 +7,17 @@ Gate M0 passed 2026-11-11 (Clay). M1 is in progress; its steps are first, M0's a
 If an old version shows, reload the page. Fingers: tap `f0`…`f4` in the debug panel (thumb to pinky).
 
 
+## M1.4: base coat, top coats, jelly (try when convenient; not blocking)
+A second column of bottles beside the tray: base (B), shiny top coat (star), matte top coat (dots).
+1. Tap the **star** bottle and brush once down the middle of a bare or painted nail. Where the brush
+   goes looks wet. Past about half the nail the whole nail shines, and a moment later the camera
+   moves to the next nail.
+2. Do the same with the **dots** bottle on a painted nail: it goes soft and velvety, no shine.
+3. **B** (base coat) works the same way; on a bare nail it adds a little shine.
+4. Rub a coated nail with the remover pad: the coat comes off first. Oops brings it back.
+5. Jelly polish: open **https://dev.hallie.xyz/?debug&polish=jelly-pink** and paint: see-through
+   candy pink with the nail showing through.
+
 ## M1.3: swab, remover pad, Oops (try when convenient; not blocking)
 New buttons on the right: swab (top), remover pad, the bottle, and Oops (curved arrow) below it.
 1. Paint a nail and go off the edge onto the skin on purpose. The polish shows on the skin.

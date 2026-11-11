@@ -22,6 +22,9 @@ export function makeFingerUniforms(frame, fold, tuning) {
     uRim: { value: new THREE.Vector2(fold.rimWidth, fold.rimStrength) },
     uSkinFilm: { value: tuning.film.skinFactor },
     uGloss: { value: tuning.nail?.gloss ?? 1 },
+    // Clear coats on this nail (PLAN M1.4): x = base coat 0/1, y = top coat 0 none / 1 gloss / 2 matte.
+    uCoat: { value: new THREE.Vector2(0, 0) },
+    uCoatK: { value: new THREE.Vector4(tuning.coats.glossRoughness, tuning.coats.matteRoughness, tuning.coats.glossClearcoat, tuning.coats.baseClearcoat) },
     uWorldToPaint: { value: frame.worldToPaint },
   };
 }
@@ -30,6 +33,8 @@ const COMMON = /* glsl */`
 uniform sampler2D tSdf, tPig, tMat, tDet;
 uniform vec4 uRect;
 uniform float uBed, uSmile, uCuticleDepth, uSkinFilm, uGloss;
+uniform vec2 uCoat;
+uniform vec4 uCoatK;
 uniform vec2 uLunula;
 uniform vec3 uBedCol, uSkinCol;
 uniform vec2 uGroove, uRim;
@@ -107,6 +112,11 @@ export function makeNailMaterial(uniforms) {
           // A near-solid coat hides the nail completely; only a thin coat shows what is under it.
           float nlHide = smoothstep(0.72, 0.92, nlFilm);
           vec3 nlCol = mix(nlBare * (1.0 - nlFilm) + nlPig.rgb, nlPig.rgb / max(nlFilm, 1e-3), nlHide);
+          // Jelly (translucency 1): see-through candy colour, film × 0.6 over the nail bed.
+          float nlJel = nlM.r * step(0.004, nlFilm);
+          nlCol = mix(nlCol, mix(nlBare, nlPig.rgb / max(nlFilm, 1e-3), nlFilm * 0.6), nlJel);
+          // A wet clear coat on bare nail: a slight lift where the brush has been, so the stroke shows.
+          nlCol *= 1.0 + 1.0 * nlWet * (1.0 - nlFilm);
           // Cuticle rim: thin translucent skin over the plate along the proximal edge only.
           float nlProx = (1.0 - smoothstep(uCuticleDepth * 0.9, uCuticleDepth * 1.6, nlP.y));
           float nlRimK = (1.0 - smoothstep(uRim.x * 0.5, uRim.x * 1.8, nlD)) * nlProx * uRim.y;
@@ -116,7 +126,10 @@ export function makeNailMaterial(uniforms) {
           diffuseColor.rgb = nlCol;`,
         metalnessmap_fragment: /* glsl */`
           float nlRough = mix(0.38, nlM.g, nlFilm);
-          nlRough = mix(nlRough, 0.06, nlWet * 0.5 * nlFilm);
+          nlRough = mix(nlRough, 0.06, nlWet * 0.5);                  // wet polish or a wet clear coat
+          if (uCoat.y > 1.5) nlRough = uCoatK.y;                      // matte top coat: velvet
+          // (A gloss top coat is a clear layer over the polish: it works on the clear coat below,
+          // not on the polish's own roughness, which would mirror the dark parts of the room.)
           nlRough = mix(nlRough, 0.04, nlDt.b * nlFilm);               // sparkle flakes are little mirrors
           roughnessFactor = nlRough;
           metalnessFactor = nlM.b * nlFilm;`,
@@ -137,10 +150,15 @@ export function makeNailMaterial(uniforms) {
           // Polish shine (tuning nail.gloss): the coat's own reflection too, but not a metal's.
           material.specularColor *= mix(1.0, uGloss, nlFilm * (1.0 - metalnessFactor));
           material.clearcoatRoughness = mix(0.25, 0.10, nlFilm);
+          // Clear coats: base adds a little shine to a bare nail, gloss a lot, matte takes it all away.
+          float nlCoatCC = max(max(uCoat.x * uCoatK.w, step(0.5, uCoat.y) * step(uCoat.y, 1.5) * uCoatK.z), nlWet * 0.5);
+          material.clearcoat = max(material.clearcoat, nlCoatCC * (1.0 - nlRimK));     // not over the cuticle rim
+          if (uCoat.y > 0.5 && uCoat.y < 1.5) material.clearcoatRoughness = uCoatK.x;
+          if (uCoat.y > 1.5) { material.clearcoat = 0.0; material.specularColor *= 0.6; }
           material.iridescence = nlM.a * nlFilm;`,
       },
     });
-  m.customProgramCacheKey = () => 'nail-plate-8';
+  m.customProgramCacheKey = () => 'nail-plate-13';
   return m;
 }
 

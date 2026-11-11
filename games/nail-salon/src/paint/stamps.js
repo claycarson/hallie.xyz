@@ -81,7 +81,7 @@ function stampMaterial(shared, body, blend) {
     vertexShader: VERT,
     fragmentShader: `${FRAG_HEAD}\n${body}`,
     depthTest: false, depthWrite: false, transparent: true,
-    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+    blending: THREE.CustomBlending, blendEquation: blend.eq ?? THREE.AddEquation,
     blendSrc: blend.src, blendDst: blend.dst, blendSrcAlpha: blend.srcA, blendDstAlpha: blend.dstA,
   });
 }
@@ -172,7 +172,12 @@ export class StampRenderer {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
       }`,
       { uniforms: { ...eraseU, tPigNow: this.uPigNow, uIdClear: this.uIdClear }, src: THREE.OneFactor, dst: THREE.ZeroFactor, srcA: THREE.OneFactor, dstA: THREE.ZeroFactor });
-    /** null = polish; otherwise 'swab' | 'remover'. */
+    // Clear coats (base, top): no colour, just a wet shine where the brush has been. Max blending
+    // raises Detail's wetness (alpha) and leaves its flakes (rgb, never below 0) alone.
+    this.coat = stampMaterial(shared, `${ERASE}
+      void main() { float sd; float f = pad(sd); if (f < 0.05) discard; gl_FragColor = vec4(0.0, 0.0, 0.0, f); }`,
+      { uniforms: eraseU, eq: THREE.MaxEquation, src: THREE.OneFactor, dst: THREE.OneFactor, srcA: THREE.OneFactor, dstA: THREE.OneFactor });
+    /** null = polish; otherwise 'swab' | 'remover' | 'coat'. */
     this.eraser = null;
 
     this.mesh = new THREE.Mesh(quad, this.pigment);
@@ -188,7 +193,7 @@ export class StampRenderer {
     this.uId.value = finish.id / 255;
   }
 
-  /** Erase instead of paint: 'swab' (skin only) or 'remover' (everything); null = polish. */
+  /** Erase instead of paint: 'swab' (skin only), 'remover' (everything), or 'coat' (clear: wetness only); null = polish. */
   setEraser(kind, edge, idClear) {
     this.eraser = kind;
     if (edge) this.uEdge2.value.set(edge[0], edge[1]);
@@ -208,6 +213,14 @@ export class StampRenderer {
     this.buffer.clearUpdateRanges(); this.buffer.addUpdateRange(0, count * STAMP_FLOATS);
     this.buffer.needsUpdate = true;
     this.geometry.instanceCount = count;
+    if (this.eraser === 'coat') {
+      const long = this.shared.uLong.value;
+      this.shared.uLong.value = 1; this.uOutside.value = 0;
+      this.mesh.material = this.coat;
+      drawInto(renderer, this.mesh, targets.detail);
+      this.shared.uLong.value = long;
+      return;
+    }
     if (this.eraser) {
       const long = this.shared.uLong.value;
       this.shared.uLong.value = 1;                          // erasers are round

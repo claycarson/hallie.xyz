@@ -59,6 +59,18 @@
         0.3,
         0.1
       ]
+    },
+    "jelly": {
+      "id": 6,
+      "translucency": 1,
+      "roughness": 0.1,
+      "metalness": 0,
+      "iridescence": 0,
+      "flake": [
+        0,
+        0,
+        0
+      ]
     }
   },
   "polishes": [
@@ -121,6 +133,18 @@
       "name": "Lilac Holo",
       "color": "#c9b3ff",
       "finish": "holo"
+    },
+    {
+      "id": "jelly-pink",
+      "name": "Pink Jelly",
+      "color": "#ff4f9a",
+      "finish": "jelly"
+    },
+    {
+      "id": "jelly-blue",
+      "name": "Blue Jelly",
+      "color": "#4aa8ff",
+      "finish": "jelly"
     }
   ],
   "finishNote": "flake = [cells per nail width, normal tilt 0-1, share of cells that sparkle]"
