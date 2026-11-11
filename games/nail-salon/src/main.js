@@ -19,6 +19,7 @@ import { PointerInput } from './input/pointer.js';
 import { DebugOverlay } from './debug/overlay.js';
 import { CameraRig } from './scene/rig.js';
 import { BrushModel } from './brush/model.js';
+import { parseTune, tuned, addGizmos, frameEditor } from './debug/frames.js';
 
 const Q = new URLSearchParams(location.search);
 const json = (name) => fetch(`./data/${name}.json`).then((r) => { if (!r.ok) throw new Error(`data/${name}.json ${r.status}`); return r.json(); });
@@ -28,6 +29,8 @@ const HAND_KEY = 'nailSalon.handDirection';
 async function boot() {
   const [tuning, handData, cameraData, themes, catalog] = await Promise.all(['tuning', 'hand', 'camera', 'themes', 'catalog'].map(json));
   const [handGeo, under] = await Promise.all([loadHand(`./${handData.file}`), loadUnderside(`./${handData.under}`)]);
+  const tune = parseTune(Q.get('tune'));                // ?tune=… : frame editor offsets
+  handData.fingers = handData.fingers.map((f) => tuned(f, tune[f.finger]));
   const fixed = Q.has('scene');                       // fixed test scene: nothing drifts
   const state = {
     scene: Q.get('scene') || Q.get('view') || 'nail',
@@ -292,6 +295,11 @@ async function boot() {
     return true;
   }
   turnBtn?.addEventListener('click', () => turnHand());
+
+  if (Q.get('debug') === 'frames') {
+    addGizmos(scene, [frame, ...others.map((o) => o.frame)]);
+    frameEditor(cfg, tune);
+  }
 
   const overlay = Q.has('debug') ? new DebugOverlay(() => {
     const s = stats.last, f = (n) => n.toFixed(2);

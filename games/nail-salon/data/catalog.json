@@ -39,8 +39,8 @@
     "chrome": {
       "id": 4,
       "translucency": 0,
-      "roughness": 0.05,
-      "metalness": 1,
+      "roughness": 0.11,
+      "metalness": 0.72,
       "iridescence": 0,
       "flake": [
         0,

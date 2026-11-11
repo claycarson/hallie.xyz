@@ -23,7 +23,7 @@
       "lunula": [0.3, 0.22], "width": 0.0083, "bedLength": 0.01187, "shelfZ": -0.00136, "naturalFree": 0.25, "dome": 0, "arch": 0.08 },
     { "finger": 3, "bone": null, "origin": [-0.04016, 0.09712, 0.04161], "tipDir": [0.0079, 0.9598, -0.2804], "normal": [-0.2298, 0.2747, 0.9337],
       "width": 0.0083, "bedLength": 0.01055, "shelfZ": -0.00113, "naturalFree": 0.25, "dome": 0, "arch": 0.08 },
-    { "finger": 4, "bone": null, "origin": [-0.05462, 0.06919, 0.0336], "tipDir": [-0.0602, 0.9566, -0.285], "normal": [-0.4363, 0.2316, 0.8695],
+    { "finger": 4, "bone": null, "origin": [-0.05412, 0.06919, 0.0336], "tipDir": [-0.0602, 0.9566, -0.285], "normal": [-0.4363, 0.2316, 0.8695],
       "width": 0.007, "bedLength": 0.00946, "shelfZ": -0.00128, "naturalFree": 0.25, "dome": 0, "arch": 0.08 }
   ]
 }

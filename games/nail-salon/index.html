@@ -33,6 +33,13 @@
   #turn:active { transform: scale(.94); }
   #turn svg { width: 100%; height: 100%; display: block; transform: rotate(var(--spin, 0deg)); transition: transform .5s ease-in-out; }
   @media (prefers-reduced-motion: reduce) { #turn svg { transition: none; } }
+  /* ?debug=frames */
+  #frames { position: fixed; left: 8px; bottom: 8px; z-index: 10; padding: 8px 10px; width: 250px; border-radius: 10px;
+            background: rgba(20, 16, 28, .78); color: #e9f3ff; font: 11px/1.35 ui-monospace, Menlo, monospace; }
+  #frames label { display: block; margin-top: 4px; }
+  #frames output { float: right; }
+  #frames input { display: block; width: 100%; margin: 2px 0 0; }
+  #frames button { font: inherit; margin-top: 8px; padding: 4px 8px; border-radius: 6px; border: 0; }
   #boot-error { position: fixed; inset: auto 12px 12px 12px; padding: 10px; background: #fff; color: #a00; border-radius: 8px; display: none; }
 </style>
 <script type="importmap">
