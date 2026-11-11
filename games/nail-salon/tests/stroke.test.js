@@ -23,7 +23,7 @@ test('a fast stroke lays less polish than a slow one', () => {
   assert.ok(Math.abs(stamp(fast, 3)[5] - brush.centreAlpha * brush.speedMin) < 0.01);
 });
 
-test('the brush drains over five nail lengths but never runs fully dry', () => {
+test('the brush drains as it paints but never runs fully dry', () => {
   const e = make(); e.begin(0, 0.1, 0);
   for (let i = 0; i < 12; i++) { e.move(0, i % 2 ? 0.1 : 0.9, (i + 1) * 800); e.reset(); }
   assert.equal(e.load, 0);

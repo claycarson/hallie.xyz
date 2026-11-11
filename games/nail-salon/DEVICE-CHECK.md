@@ -9,7 +9,9 @@ or `&finger=0…4`, thumb to pinky). `?scene=hand&debug` shows the whole hand.
 3. Rest your palm on the screen while painting. The palm must not paint.
 4. Put the Pencil down for a minute, then paint with a finger. It should work.
 5. Tilt the Pencil flat, then upright. The stroke should get wider, then narrower.
-6. Tap "Copy report" and paste what it says back.
+6. Paint until the brush goes thin and streaky and the bottle on the right pulses. Tap the bottle.
+   The next stroke should go on full again.
+7. Tap "Copy report" and paste what it says back.
 
 On the Mac: `npm run serve` in `games/nail-salon/`, then http://127.0.0.1:8813/?debug (mouse paints).
 

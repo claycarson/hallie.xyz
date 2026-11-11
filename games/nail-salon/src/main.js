@@ -250,6 +250,28 @@ async function boot() {
   await setTheme(state.theme);
   resize(); placeCamera();
 
+  // ---- the bottle: tap to dip the brush (PLAN §4.2) ------------------------------------------
+  // The brush runs low as it paints and goes streaky; the bottle shows how much is left on it.
+  const bottle = /** @type {HTMLElement | null} */ (document.getElementById('bottle'));
+  const bottleLevel = /** @type {SVGElement | null} */ (bottle?.querySelector('.level'));
+  const bottleShown = { load: -1, color: '' };
+  function drawBottle() {
+    if (!bottle || !bottleLevel) return;
+    const load = Math.round(engine.load * 50) / 50;
+    if (load !== bottleShown.load) {
+      bottleShown.load = load;
+      bottleLevel.style.transform = `scaleY(${(0.12 + 0.88 * load).toFixed(3)})`;
+      bottle.classList.toggle('low', load < tuning.brush.lowLoad);
+    }
+    if (state.polish.color !== bottleShown.color) { bottleShown.color = state.polish.color; bottleLevel.setAttribute('fill', state.polish.color); }
+  }
+  function dipBrush() {
+    engine.dip();
+    if (!bottle) return;
+    bottle.classList.remove('dip'); void bottle.offsetWidth; bottle.classList.add('dip');
+  }
+  bottle?.addEventListener('pointerdown', (e) => { e.preventDefault(); dipBrush(); });
+
   const overlay = Q.has('debug') ? new DebugOverlay(() => {
     const s = stats.last, f = (n) => n.toFixed(2);
     return [
@@ -275,6 +297,7 @@ async function boot() {
       stats.refresh(renderer);
     }
     renderer.render(scene, camera);
+    drawBottle();
     overlay?.tick(); frames++;
     while (waiters.length) waiters.pop()();
     requestAnimationFrame(loop);
@@ -292,6 +315,7 @@ async function boot() {
     view: (scene, flip = state.flip) => { state.scene = scene; state.flip = flip; placeCamera(); return nextFrame(); },
     clear: () => { targets.clear(renderer); engine.dip(); wet.left = 0; state.dirty = true; return nextFrame(); },
     dip: () => engine.dip(),
+    tapBottle: dipBrush,
     /** Let wet polish level and dry for `seconds` of game time, without waiting. */
     advance: (seconds) => { flush(); for (let n = Math.round(seconds * WET_HZ); n > 0 && wet.left > 0; n--) { wetTick(); wet.left -= 1 / WET_HZ; } return nextFrame(); },
     wetLeft: () => wet.left,
