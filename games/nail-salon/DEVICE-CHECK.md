@@ -1,8 +1,26 @@
-# Device check: Gate M0 (iPad)
+# Device check (iPad)
+
+Gate M0 passed 2026-11-11 (Clay). M1 is in progress; its steps are first, M0's are kept below.
 
 **https://dev.hallie.xyz/?debug** (HTTPS dev copy of the `nail-salon` branch; not live).
 
 If an old version shows, reload the page. Fingers: tap `f0`…`f4` in the debug panel (thumb to pinky).
+
+
+## M1.1: all five nails (try when convenient; not blocking)
+1. Open **https://dev.hallie.xyz/?view=hand&debug**. The whole hand shows, with a little hand map at
+   the bottom left.
+2. Tap any nail on the hand. The camera glides to it. Paint it.
+3. Use the arrows beside the nail to go to the next one. The brush is full again each time.
+4. Swipe sideways on empty background (off the finger). It moves one nail. A swipe that starts
+   on the finger paints instead.
+5. Tap a nail on the little hand map, then the map's palm (back to the whole hand). Painted
+   nails fill in on the map; unfinished ones glow.
+6. Go back to a nail you painted earlier. The paint is all still there and looks just as sharp.
+7. Tap the arrows and the turn button with a finger right after using the Pencil. They work.
+8. **Copy report** and paste it back: it now shows `paint … MB` and `switch … ms`.
+
+# Gate M0 (done)
 
 ## On the Mac first
 Open `~/Documents/Repositories/tasks/2026-11-10_nail-salon-mockups/anatomy-sheet/index.html`.

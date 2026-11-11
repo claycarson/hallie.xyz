@@ -1,6 +1,7 @@
 {
   "fov": 20,
   "turnMs": 500,
+  "glideMs": 600,
   "nail": { "distance": 7.2, "centre": 0.5, "x": 0, "roll": 0 },
   "fingers": {
     "down": [{}, {}, {}, {}, {}],

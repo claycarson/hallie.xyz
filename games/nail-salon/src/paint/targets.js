@@ -1,6 +1,6 @@
 // @ts-check
 import * as THREE from 'three';
-import { clearTarget, makeTarget } from '../engine/gpu.js';
+import { clearTarget, copyTarget, makeTarget } from '../engine/gpu.js';
 
 /**
  * One finger's paint targets (PLAN §4.1), all in paint-frame UV and all linear data.
@@ -27,6 +27,11 @@ export class PaintTargets {
     clearTarget(renderer, this.detail, 0.5, 0.5, 0, 0);
     clearTarget(renderer, this.art, 0, 0, 0, 0);
     clearTarget(renderer, this.id, 0, 0, 0, 0);
+  }
+
+  /** Copy another set into this one, scaling as needed (a finger moving between 512² and 1024²). */
+  copyFrom(renderer, other) {
+    for (const k of ['pigment', 'material', 'detail', 'art', 'id']) copyTarget(renderer, other[k], this[k]);
   }
 
   /** Bytes of GPU memory held (for the debug overlay). */

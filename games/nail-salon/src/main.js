@@ -3,16 +3,14 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/RGBELoader.js';
 import { gpuCaps } from './engine/gpu.js';
 import { NailFrame } from './hand/frame.js';
+import { Finger } from './hand/finger.js';
 import { loadHand } from './hand/model.js';
 import { loadUnderside, buildRest } from './hand/rest.js';
-import { outline, sdPolygon, area, SHAPES } from './hand/outline.js';
-import { OutlineSdf } from './hand/sdf.js';
-import { SkinHeight, makePlateZ, buildPlate, buildPlateNormals } from './hand/plate.js';
-import { makeFingerUniforms, makeNailMaterial, makeSkinMaterial } from './hand/materials.js';
+import { area, SHAPES } from './hand/outline.js';
+import { makeFingerUniforms, makeSkinMaterial } from './hand/materials.js';
 import { PaintTargets } from './paint/targets.js';
 import { StampRenderer } from './paint/stamps.js';
 import { StrokeEngine } from './paint/stroke.js';
-import { NailStats } from './paint/stats.js';
 import { Leveler, WET_HZ } from './paint/leveling.js';
 import { BrushSound } from './audio/brush.js';
 import { PointerInput } from './input/pointer.js';
@@ -33,6 +31,7 @@ async function boot() {
   const tune = parseTune(Q.get('tune'));                // ?tune=… : frame editor offsets
   handData.fingers = handData.fingers.map((f) => tuned(f, tune[f.finger]));
   const fixed = Q.has('scene');                       // fixed test scene: nothing drifts
+  const perf = { frame: 0, js: 0, boot: 0, switchMs: 0 };  // smoothed ms: frame to frame, our own work; last nail switch
   const state = {
     scene: Q.get('scene') || Q.get('view') || 'nail',
     shape: Q.get('shape') || 'round', free: Number(Q.get('free') ?? NaN),
@@ -60,22 +59,20 @@ async function boot() {
     return envCache.get(name);
   };
 
-  // ---- the hand: skin, five nail frames, five plates ------------------------------------------
-  // One finger is active (painted, with paint targets and fold shading on the skin). The other
-  // four carry a bare plate until M1.1 gives every finger its own targets.
+  // ---- the hand: skin and five fingers ------------------------------------------------------
+  // Every finger owns small paint targets (tuning.paint.restSize). The one being painted, the
+  // active finger, is bound to one shared full-size set instead: its paint is copied up when
+  // it becomes active and copied back down when it stops (PLAN §4.1). The skin's fold shading
+  // and spill follow the active finger.
   const fold = handData.fold;
-  const activeId = Q.has('finger') ? Number(Q.get('finger')) : handData.active;
-  const cfg = handData.fingers.find((f) => f.finger === activeId) || handData.fingers[0];
-  const frame = new NailFrame(cfg, handData.maxFree);
-  scene.add(frame.group);
-  const uniforms = makeFingerUniforms(frame, fold, tuning);
+  const startId = Q.has('finger') ? Number(Q.get('finger')) : handData.active;
+  const startCfg = handData.fingers.find((f) => f.finger === startId) || handData.fingers[0];
+  const skinU = makeFingerUniforms(new NailFrame(startCfg, handData.maxFree), fold, tuning);
   const tips = { value: handData.fingers.map((f) => new THREE.Vector3(...f.origin).addScaledVector(new THREE.Vector3(...f.tipDir).normalize(), f.bedLength * 0.9).addScaledVector(new THREE.Vector3(...f.normal).normalize(), -0.004)) };
-  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(uniforms, tips));
+  const skinMesh = new THREE.Mesh(handGeo, makeSkinMaterial(skinU, tips));
   scene.add(skinMesh);
   scene.updateMatrixWorld(true);
-  frame.update();
-  const skin = new SkinHeight(frame, [skinMesh]);
-  const skinMask = skin.maskTexture();
+  const fingers = handData.fingers.map((c) => new Finger(c, { scene, skinMesh, renderer, handData, tuning, caps }));
 
   const table = new THREE.Mesh(new THREE.CircleGeometry(0.6, 48), new THREE.MeshStandardMaterial({ roughness: 0.9 }));
   table.position.z = -0.0005;
@@ -83,85 +80,87 @@ async function boot() {
   rest.shadow.position.z = -0.0003;
   scene.add(table, rest.shadow, rest.cushion);
 
-  const sdf = new OutlineSdf(frame.rect);
-  const nailMesh = new THREE.Mesh(new THREE.BufferGeometry(), makeNailMaterial(uniforms));
-  frame.group.add(nailMesh);
-  const nail = { info: outline('round', 1), plateZ: (x, y) => 0, shape: 'round', free: 0 };
-  const sd = (x, y) => sdPolygon(nail.info.points, x, y);
-  const surface = (x, y) => (sd(x, y) <= 0 ? nail.plateZ(x, y) : skin.at(x, y));
-
-  // Bare plates on the other fingers.
-  const blank = new THREE.DataTexture(new Uint8Array(4), 1, 1); blank.needsUpdate = true;
-  const others = handData.fingers.filter((f) => f !== cfg).map((c) => {
-    const fr = new NailFrame(c, handData.maxFree);
-    scene.add(fr.group); fr.group.updateMatrixWorld(true); fr.update();
-    const u = makeFingerUniforms(fr, fold, tuning);
-    u.tPig.value = u.tMat.value = u.tDet.value = blank;
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), makeNailMaterial(u));
-    fr.group.add(mesh);
-    return { cfg: c, frame: fr, uniforms: u, mesh, skin: new SkinHeight(fr, [skinMesh]), sdf: new OutlineSdf(fr.rect) };
-  });
-  function shapeOther(o, shape, free) {
-    const info = outline(shape, o.frame.lengthFor(free));
-    o.sdf.update(renderer, info.points);
-    o.uniforms.tSdf.value = o.sdf.texture;
-    o.uniforms.uCuticleDepth.value = info.cuticleDepth;
-    o.mesh.geometry.dispose();
-    const z = makePlateZ(o.frame, info.points, o.skin, fold, o.cfg);
-    o.mesh.geometry = buildPlate(info, z, fold, o.frame.bed);
-    o.uniforms.tNrm.value = buildPlateNormals(z, info.points, info.length, o.frame.rect, o.uniforms.tNrm.value);
-  }
-
   // ---- paint -------------------------------------------------------------------------------
-  const targets = new PaintTargets(1024, caps);
-  targets.clear(renderer);
-  const engine = new StrokeEngine(tuning.brush, sd);
+  const big = new PaintTargets(tuning.paint.activeSize, caps);
+  big.clear(renderer);
+  /** @type {Finger} */
+  let active = fingers.find((f) => f.cfg === startCfg) || fingers[0];
+  const engine = new StrokeEngine(tuning.brush, (x, y) => active.sd(x, y));
   const stamps = new StampRenderer(tuning.brush, engine.capacity);
-  const stats = new NailStats(tuning);
-  stamps.setFinger(sdf.texture, skinMask, frame.rect);
-  stats.setFinger(sdf.texture, targets, frame.rect);
-  uniforms.tSdf.value = sdf.texture; uniforms.tPig.value = targets.pigment.texture;
-  uniforms.tMat.value = targets.material.texture; uniforms.tDet.value = targets.detail.texture;
-
-  const brushModel = new BrushModel(tuning.brushModel, frame.group);
-  const leveler = new Leveler(targets.size, caps.halfFloat, tuning.wet);
+  /** The active finger's stats reader (each finger has its own). */
+  let stats = active.nstats;
+  const brushModel = new BrushModel(tuning.brushModel, active.frame.group);
+  const leveler = new Leveler(big.size, caps.halfFloat, tuning.wet);
   const sound = new BrushSound();
-  const wet = { left: 0, acc: 0 };                  // seconds of wetness left; tick remainder
+  const wet = { acc: 0 };                          // tick remainder; each finger keeps its own wetness
+  /** Point everything that follows the active finger at it and at the shared targets. */
+  function bindActive() {
+    active.bind(big);
+    for (const k of Object.keys(skinU)) skinU[k].value = active.uniforms[k].value;
+    stamps.setFinger(active.sdf.texture, active.skinMask, active.frame.rect);
+    stats = active.nstats;
+    engine.nailLength = active.info.length;
+  }
   const wetTick = (seconds) => {
-    leveler.tick(renderer, targets, sdf.texture, seconds);
-    uniforms.tPig.value = targets.pigment.texture;
-    stats.setFinger(sdf.texture, targets, frame.rect);
-    state.dirty = true;
+    leveler.tick(renderer, big, active.sdf.texture, seconds);
+    bindActive();
+    active.dirty = true; state.dirty = true;
   };
-  /** Advance wet polish by dt seconds (level + dry), at the fixed tick rate. */
+  /** Advance wet polish by dt seconds at the fixed tick rate: the active finger levels and dries,
+   *  the others only dry. */
   const wetAdvance = (dt, maxTicks = 4) => {
-    if (wet.left <= 0) return;
+    if (!fingers.some((f) => f.wet.left > 0)) { wet.acc = 0; return; }
     wet.acc += dt;
     let n = Math.min(maxTicks, Math.floor(wet.acc * WET_HZ));
     wet.acc -= n / WET_HZ; if (wet.acc > 1 / WET_HZ) wet.acc = 0;
-    for (; n > 0 && wet.left > 0; n--) { wetTick(); wet.left -= 1 / WET_HZ; }
+    for (; n > 0; n--) wetStep();
   };
+  function wetStep() {
+    for (const f of fingers) {
+      if (f.wet.left <= 0) continue;
+      if (f === active) wetTick(); else leveler.dryOnly(renderer, f.targets, tuning.wet.drySeconds, f.wet);
+      f.wet.left -= 1 / WET_HZ;
+    }
+  }
 
   const flush = () => {
     if (!engine.count) return;
-    wet.left = tuning.wet.drySeconds + 0.5;
-    stamps.flush(renderer, engine.stamps, engine.count, targets);
-    state.stamps += engine.count; engine.reset(); state.dirty = true;
+    active.wet.left = tuning.wet.drySeconds + 0.5;
+    stamps.flush(renderer, engine.stamps, engine.count, big);
+    state.stamps += engine.count; engine.reset(); state.dirty = true; active.dirty = true;
   };
   engine.onFull = flush;
 
+  /**
+   * Make a finger the one being painted. Copies the old one's paint back down (only if it
+   * changed, so a visit doesn't soften it) and the new one's up. Returns the ms it took.
+   */
+  function activate(f) {
+    if (f === active) return 0;
+    const t0 = performance.now();
+    flush();
+    if (engine.down) engine.end();
+    const old = active;
+    if (old.dirty) old.targets.copyFrom(renderer, big);
+    old.bind(old.targets);
+    if (old.dirty) old.nstats.refresh(renderer, true).then(() => drawMap());   // its numbers, from its own copy
+    old.dirty = false;
+    active = f;
+    big.copyFrom(renderer, f.targets);
+    bindActive();
+    f.frame.group.add(brushModel.root, brushModel.shadow);
+    state.dirty = true;
+    perf.switchMs = performance.now() - t0;
+    return perf.switchMs;
+  }
+
+  /** GPU memory held by paint: every finger's own set, the shared one and the leveling scratch. */
+  const paintBytes = () => big.bytes + fingers.reduce((n, f) => n + f.targets.bytes, 0) + big.size * big.size * (caps.halfFloat ? 8 : 4);
+
   function setShape(shape, free) {
-    nail.shape = shape; nail.free = free;
-    nail.info = outline(shape, frame.lengthFor(free));
-    sdf.update(renderer, nail.info.points);
-    nail.plateZ = makePlateZ(frame, nail.info.points, skin, fold, cfg);
-    nailMesh.geometry.dispose();
-    nailMesh.geometry = buildPlate(nail.info, nail.plateZ, fold, frame.bed);
-    uniforms.tNrm.value = buildPlateNormals(nail.plateZ, nail.info.points, nail.info.length, frame.rect, uniforms.tNrm.value);
-    uniforms.uCuticleDepth.value = nail.info.cuticleDepth;
-    engine.nailLength = nail.info.length;
-    stats.refreshGeometry(renderer);
-    for (const o of others) shapeOther(o, shape, free);
+    flush();
+    for (const f of fingers) f.setShape(renderer, shape, free);
+    bindActive();
     state.dirty = true;
   }
 
@@ -176,7 +175,7 @@ async function boot() {
 
   function setRequest(id) {
     const p = id && catalog.polishes.find((q) => q.id === id);
-    stats.setRequest(p ? new THREE.Color(p.color) : null, p ? [catalog.finishes[p.finish].id] : []);
+    for (const f of fingers) f.nstats.setRequest(p ? new THREE.Color(p.color) : null, p ? [catalog.finishes[p.finish].id] : []);
     state.dirty = true;
   }
 
@@ -190,7 +189,7 @@ async function boot() {
     renderer.toneMappingExposure = L.exposure;
     key.color.set(L.key[0]); key.intensity = L.key[1];
     rimL.color.set(L.rim[0]); rimR.color.set(L.rim[1]); rimL.intensity = rimR.intensity = L.rim[2];
-    for (const u of [uniforms, ...others.map((o) => o.uniforms)]) { u.uSkinCol.value.set(theme.skin); u.uBedCol.value.set(theme.nailBed); }
+    for (const u of [skinU, ...fingers.map((f) => f.uniforms)]) { u.uSkinCol.value.set(theme.skin); u.uBedCol.value.set(theme.nailBed); }
     brushModel.setCap(theme.brushCap);
     /** @type {THREE.MeshStandardMaterial} */ (table.material).color.set(theme.table);
     /** @type {THREE.MeshPhysicalMaterial} */ (rest.cushion.material).color.set(theme.cushion);
@@ -199,9 +198,9 @@ async function boot() {
 
   // ---- camera ------------------------------------------------------------------------------
   const v = new THREE.Vector3();
-  const rig = new CameraRig(camera, cameraData, cfg.finger, state.scene === 'hand' ? 'hand' : 'nail', startUp());
+  const rig = new CameraRig(camera, cameraData, active.id, state.scene === 'hand' ? 'hand' : 'nail', startUp());
   function placeCamera() {
-    rig.apply(frame.group.matrixWorld, nail.info.length);
+    rig.apply(active.frame.group.matrixWorld, active.info.length);
     key.position.set(-0.3, 0.6, 0.4).add(camera.position); rimL.position.set(-0.6, 0.2, -0.15); rimR.position.set(0.6, 0.2, -0.15);
   }
   /** Which way the hand starts: ?flip=1 for tests, otherwise the saved choice (R11: tips down). */
@@ -226,13 +225,14 @@ async function boot() {
     const r = canvas.getBoundingClientRect();
     ro.setFromMatrixPosition(camera.matrixWorld);
     rd.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height * 2 - 1), 0.5).unproject(camera);
+    const frame = active.frame;
     ro.applyMatrix4(frame.worldToPaint); rd.applyMatrix4(frame.worldToPaint).sub(ro);
     if (Math.abs(rd.z) < 1e-6) return false;
     let z = 0, x = 0, y = 0;
     for (let i = 0; i < 4; i++) {
       const t = (z - ro.z) / rd.z;
       x = ro.x + rd.x * t; y = ro.y + rd.y * t;
-      z = surface(x, y);
+      z = active.surface(x, y);
     }
     out.x = x; out.y = y;
     const R = frame.rect;
@@ -240,7 +240,7 @@ async function boot() {
   }
   function paintToClient(x, y) {
     const r = canvas.getBoundingClientRect();
-    v.set(x, y, surface(x, y)).applyMatrix4(frame.group.matrixWorld).project(camera);
+    v.set(x, y, active.surface(x, y)).applyMatrix4(active.frame.group.matrixWorld).project(camera);
     return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height];
   }
 
@@ -249,15 +249,22 @@ async function boot() {
   function showBrush(cx, cy, x, y, altitude, azimuth, touching) {
     const M = tuning.brushModel, az = azimuth ?? M.defaultAzimuthDeg * RAD, alt = altitude ?? M.defaultAltitudeDeg * RAD;
     if (!clientToPaint(cx + Math.cos(az) * 40, cy + Math.sin(az) * 40, tailAt)) return;
-    brushModel.place(x, y, surface(x, y), tailAt.x - x, tailAt.y - y, alt, touching, performance.now());
+    brushModel.place(x, y, active.surface(x, y), tailAt.x - x, tailAt.y - y, alt, touching, performance.now());
   }
 
-  const input = new PointerInput(canvas, { toPaint: clientToPaint, engine, ...tuning.input, blocked: () => rig.turning, onCursor: showBrush });
+  const pt = { x: 0, y: 0 };
+  /** Empty background in nail view: no finger under this screen point. */
+  const offHand = (cx, cy) => !clientToPaint(cx, cy, pt) || !active.onHand(pt.x, pt.y);
+  const input = new PointerInput(canvas, {
+    toPaint: clientToPaint, engine, ...tuning.input, onCursor: showBrush, offHand,
+    blocked: () => rig.moving || rig.view !== 'nail',
+  });
   // Sound is off unless asked for (?sound=1): Clay found the synthesized brush bad and optional.
   if (Q.get('sound') === '1') canvas.addEventListener('pointerdown', () => sound.wake());
 
   // ---- start -------------------------------------------------------------------------------
-  setShape(SHAPES.includes(state.shape) ? state.shape : 'round', Number.isFinite(state.free) ? state.free : cfg.naturalFree);
+  setShape(SHAPES.includes(state.shape) ? state.shape : 'round', Number.isFinite(state.free) ? state.free : startCfg.naturalFree);
+  bindActive();
   setPolish(Q.get('polish') || 'cream-red');
   setRequest(Q.get('polish') || 'cream-red');
   await setTheme(state.theme);
@@ -293,6 +300,7 @@ async function boot() {
     turnSpin += 180;
     turnBtn?.style.setProperty('--spin', `${turnSpin}deg`);
     try { localStorage.setItem(HAND_KEY, rig.up ? 'up' : 'down'); } catch { /* storage may be off */ }
+    drawMap();
     return true;
   }
   // A resting palm must not turn the hand: the press is judged at pointerdown, where we know
@@ -301,20 +309,109 @@ async function boot() {
   turnBtn?.addEventListener('pointerdown', (e) => { turnOk = input.touchMayPress(e); });
   turnBtn?.addEventListener('click', () => { if (turnOk) turnHand(); turnOk = true; });
 
+  // ---- moving between nails (PLAN §5, §6, §13.3) ---------------------------------------------
+  // Arrows beside the nail, the mini-map, a swipe on empty background, or (in hand view) a tap
+  // on a nail. Changing nails re-dips the brush during the glide (§4.2).
+  const wc = new THREE.Vector3();
+  /** Fingers left to right as they sit on screen (fingertips down puts the thumb on the left). */
+  const screenOrder = () => fingers.map((f) => [f, f.centre(wc).x]).sort((a, b) => (rig.up ? a[1] - b[1] : b[1] - a[1])).map((p) => p[0]);
+  function goTo(view, id = active.id) {
+    if (rig.moving || engine.down) return false;
+    const f = fingers.find((q) => q.id === id) || active;
+    if (view === rig.view && f === active) return false;
+    if (f !== active) { activate(f); engine.dip(); }
+    rig.goTo(view, f.id, performance.now());
+    document.body.dataset.view = view;
+    drawMap();
+    return true;
+  }
+  /** The next nail to the right (+1) or left (−1) on screen. */
+  function step(dir) {
+    const order = screenOrder(), i = order.indexOf(active), next = order[i + dir];
+    return next ? goTo('nail', next.id) : false;
+  }
+  for (const [id, dir] of [['prev', -1], ['next', 1]]) {
+    const b = document.getElementById(id);
+    let ok = true;
+    b?.addEventListener('pointerdown', (e) => { ok = input.touchMayPress(e); });
+    b?.addEventListener('click', () => { if (ok) step(dir); ok = true; });
+  }
+
+  // A press on the canvas that paints nothing: a swipe on background (nail view) or a tap on a
+  // nail (hand view). Judged on release; palms are ignored.
+  const nav = { id: -1, x: 0, y: 0, t: 0 };
+  canvas.addEventListener('pointerdown', (e) => {
+    if (nav.id !== -1 || !input.touchMayPress(e) || rig.moving) return;
+    if (rig.view === 'nail' && !offHand(e.clientX, e.clientY)) return;     // on the hand: a stroke
+    Object.assign(nav, { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp });
+  });
+  const navEnd = (e) => {
+    if (e.pointerId !== nav.id) return;
+    nav.id = -1;
+    if (e.type === 'pointercancel') return;
+    const dx = e.clientX - nav.x, dy = e.clientY - nav.y, N = tuning.nav;
+    if (rig.view === 'nail') {
+      if (Math.abs(dx) > N.swipePx && Math.abs(dx) > 1.5 * Math.abs(dy) && e.timeStamp - nav.t < N.swipeMs) step(dx < 0 ? 1 : -1);
+    } else if (Math.hypot(dx, dy) < N.tapPx) {
+      let best = null, bestD = N.pickPx;
+      for (const f of fingers) {
+        f.centre(wc).project(camera);
+        const r = canvas.getBoundingClientRect(), d = Math.hypot(r.left + (wc.x + 1) / 2 * r.width - e.clientX, r.top + (1 - wc.y) / 2 * r.height - e.clientY);
+        if (d < bestD) { bestD = d; best = f; }
+      }
+      if (best) goTo('nail', best.id);
+    }
+  };
+  canvas.addEventListener('pointerup', navEnd);
+  canvas.addEventListener('pointercancel', navEnd);
+
+  // The mini-map: the five nails where they sit on the hand, filled as they're painted. The nail
+  // being painted has a ring; ones still needing work glow. Tap a nail to go there, the palm for
+  // the whole hand.
+  const map = document.getElementById('map');
+  function drawMap() {
+    if (!map) return;
+    const sgn = rig.up ? 1 : -1;               // map x follows screen x; fingertips down = tips at the bottom
+    const pts = fingers.map((f) => { f.centre(wc); return [sgn * wc.x, -sgn * wc.y]; });
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const W = 150, H = 120, tipsLow = !rig.up, k = 110 / Math.max(x1 - x0, 1e-6);
+    const at = (p) => [20 + (p[0] - x0) * k, (tipsLow ? 76 : 44) + (p[1] - (y0 + y1) / 2) * k];
+    const palmY = tipsLow ? 18 : 102, done = tuning.film.covered;
+    const nails = fingers.map((f, i) => {
+      const [x, y] = at(pts[i]), st = f.stats, cov = Math.min(1, st.coverage / done);
+      const cls = `${f === active ? 'on' : ''} ${st.coverage < done ? 'todo' : ''}`;
+      return `<g class="nail ${cls}" data-finger="${f.id}"><ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="11" ry="14" fill="var(--map, #fff)"/>
+        <ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="11" ry="14" fill="${state.polish.color}" fill-opacity="${cov.toFixed(2)}"/>
+        <ellipse class="ring" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="11" ry="14" fill="none"/></g>`;
+    }).join('');
+    const edge = tipsLow ? palmY + 10 : palmY - 10;
+    const stalks = fingers.map((f, i) => { const [x, y] = at(pts[i]); return `<path d="M${(75 + (x - 75) * 0.6).toFixed(1)} ${edge} L${x.toFixed(1)} ${y.toFixed(1)}"/>`; }).join('');
+    map.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><g class="palm" data-hand="1"><rect x="35" y="${palmY - 16}" width="80" height="32" rx="14"/><g class="stalks">${stalks}</g></g>${nails}</svg>`;
+  }
+  map?.addEventListener('pointerdown', (e) => {
+    if (!input.touchMayPress(e)) return;
+    const t = /** @type {Element} */ (e.target), g = t.closest('[data-finger]');
+    if (g) goTo('nail', Number(g.getAttribute('data-finger')));
+    else if (t.closest('[data-hand]')) goTo('hand');
+  });
+  document.body.dataset.view = rig.view;
+  drawMap();
+
   if (Q.get('debug') === 'frames') {
-    addGizmos(scene, [frame, ...others.map((o) => o.frame)]);
-    frameEditor(cfg, tune);
+    addGizmos(scene, fingers.map((f) => f.frame));
+    frameEditor(startCfg, tune);
   }
 
   const overlay = Q.has('debug') ? new DebugOverlay(() => {
     const s = stats.last, f = (n) => n.toFixed(2);
     return [
-      `gpu half-float ${caps.halfFloat}  paint ${(targets.bytes / 1048576).toFixed(0)} MB`,
+      `gpu half-float ${caps.halfFloat}  paint ${(paintBytes() / 1048576).toFixed(0)} MB  switch ${perf.switchMs.toFixed(1)} ms`,
       `pointer ${input.info.type}  alt ${input.info.altitude == null ? '-' : (input.info.altitude * 57.3).toFixed(0) + '°'}  coalesced ${input.info.coalesced}  predicted ${input.info.predicted}  hover ${input.info.hover}`,
       `polish ${state.polish.id}  load ${f(engine.load)}  speed ${f(engine.speed)}  stamps ${state.stamps}`,
       `coverage ${f(s.coverage)}  even ${f(s.evenness)}  spill ${s.spill.toFixed(3)}`,
       `colour ${f(s.colorMatch)}  finish ${f(s.finishMatch)}`,
-      `shape ${nail.shape}  free ${f(nail.free)}  theme ${state.theme.id}  ${rig.up ? 'tips up' : 'tips down'}`,
+      `finger ${active.id}  ${rig.view} view  shape ${active.shape}  free ${f(active.free)}  theme ${state.theme.id}  ${rig.up ? 'tips up' : 'tips down'}`,
       `frame ${perf.frame.toFixed(1)} ms  js ${perf.js.toFixed(1)} ms  gpu time n/a`,
       `draws ${renderer.info.render.calls}  tris ${(renderer.info.render.triangles / 1000).toFixed(0)}k  geometries ${renderer.info.memory.geometries}  textures ${renderer.info.memory.textures}`,
       `size ${innerWidth}x${innerHeight} @${renderer.getPixelRatio()}  boot ${perf.boot.toFixed(0)} ms`,
@@ -332,7 +429,6 @@ async function boot() {
   }
 
   let frames = 0, prev = performance.now();
-  const perf = { frame: 0, js: 0, boot: 0 };                  // smoothed ms: frame to frame, and our own work
   const waiters = [];
   function loop(now) {
     const began = performance.now();
@@ -340,13 +436,13 @@ async function boot() {
     const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
     if (rig.update(now)) placeCamera();
     brushModel.update(now, engine.down, rig.view === 'nail' && !rig.turning);
-    frame.update();
+    active.frame.update();
     flush();
     if (!fixed) wetAdvance(dt);
     sound.update(engine.down ? engine.speed : 0, engine.load);
     if (state.dirty && now - state.lastStats > tuning.stats.intervalMs) {
       state.dirty = false; state.lastStats = now;
-      stats.refresh(renderer);
+      stats.refresh(renderer).then(() => drawMap());
     }
     renderer.render(scene, camera);
     drawBottle();
@@ -361,11 +457,26 @@ async function boot() {
   // ---- test API (PLAN §14.2): the robot painter and every Playwright test use only this ----
   let clock = 1000;
   const api = {
-    info: () => ({ finger: cfg.finger, shape: nail.shape, free: nail.free, length: nail.info.length, bed: frame.bed, rect: frame.rect, caps, load: engine.load, stamps: state.stamps, frames }),
-    sd, setShape, setPolish, setRequest, nextFrame,
+    info: () => ({ finger: active.id, view: rig.view, shape: active.shape, free: active.free, length: active.info.length, bed: active.frame.bed, rect: active.frame.rect, caps, load: engine.load, stamps: state.stamps, frames }),
+    sd: (x, y) => active.sd(x, y), setShape, setPolish, setRequest, nextFrame,
     three: { scene, camera, renderer, key },
     setTheme: (id) => setTheme(themes.find((t) => t.id === id) || themes[0]),
-    view: (view, up = rig.up) => { rig.view = view; rig.set(up); placeCamera(); return nextFrame(); },
+    view: (view, up = rig.up) => { rig.view = view; rig.set(up); document.body.dataset.view = view; placeCamera(); return nextFrame(); },
+    /** Glide to the hand or to a nail, as a tap would, and wait until the camera arrives. */
+    async goTo(view, finger) { const ok = goTo(view, finger); while (rig.moving) await nextFrame(); await nextFrame(); return ok; },
+    /** Arrow to the next nail on screen (+1 right, −1 left) and wait. */
+    async step(dir) { const ok = step(dir); while (rig.moving) await nextFrame(); await nextFrame(); return ok; },
+    order: () => screenOrder().map((f) => f.id),
+    /** Every finger's stats: the active one fresh, the others from when they were last active. */
+    async statsAll() { flush(); await stats.refresh(renderer, true); for (const f of fingers) await f.nstats._flight?.catch(() => {}); return fingers.map((f) => ({ ...f.stats })); },
+    paintBytes: () => paintBytes(),
+    /** Is this screen point empty background (where a swipe starts)? */
+    offHand: (cx, cy) => offHand(cx, cy),
+    /** What a screen point maps to: paint coords, and whether there is hand there. */
+    hit: (cx, cy) => { const ok = clientToPaint(cx, cy, pt); return { ok, x: pt.x, y: pt.y, onHand: active.onHand(pt.x, pt.y) }; },
+    switchMs: () => perf.switchMs,
+    /** Where a finger's nail is on screen right now (hand view picking). */
+    nailOnScreen: (id) => { const f = fingers.find((q) => q.id === id); f.centre(wc).project(camera); const r = canvas.getBoundingClientRect(); return [r.left + (wc.x + 1) / 2 * r.width, r.top + (1 - wc.y) / 2 * r.height]; },
     /** Press the turn button and wait for the turn to finish. Resolves false if it was refused. */
     async turn() { const ok = turnHand(); while (rig.turning) await nextFrame(); await nextFrame(); return ok; },
     direction: () => ({ up: rig.up, turning: rig.turning, t: rig.t }),
@@ -379,14 +490,14 @@ async function boot() {
     stampCount: () => state.stamps + engine.count,
     /** Where a paint-frame point is on screen, in CSS pixels. */
     project: (x, y) => paintToClient(x, y),
-    clear: () => { targets.clear(renderer); engine.dip(); wet.left = 0; state.dirty = true; return nextFrame(); },
+    clear: () => { big.clear(renderer); for (const f of fingers) { f.targets.clear(renderer); f.wet.left = 0; f.dirty = false; f.nstats.last = { coverage: 0, evenness: 1, colorMatch: 0, finishMatch: 0, spill: 0 }; } engine.dip(); state.dirty = true; return nextFrame(); },
     dip: () => engine.dip(),
     tapBottle: dipBrush,
     /** Let wet polish level and dry for `seconds` of game time, without waiting. */
-    advance: (seconds) => { flush(); for (let n = Math.round(seconds * WET_HZ); n > 0 && wet.left > 0; n--) { wetTick(); wet.left -= 1 / WET_HZ; } return nextFrame(); },
-    wetLeft: () => wet.left,
+    advance: (seconds) => { flush(); for (let n = Math.round(seconds * WET_HZ); n > 0 && fingers.some((f) => f.wet.left > 0); n--) wetStep(); return nextFrame(); },
+    wetLeft: () => active.wet.left,
     setBrush: (radius) => { engine.radius = radius ?? tuning.brush.radius; },
-    area: () => area(nail.info.points),
+    area: () => area(active.info.points),
     stats: async () => { flush(); return stats.refresh(renderer, true); },
     filmAt: (x, y) => stats.filmAt(x, y),
     /**

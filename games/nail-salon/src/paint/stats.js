@@ -92,20 +92,30 @@ export class NailStats {
     for (const id of finishIds || []) u.uAllowed.value[id] = 1;
   }
 
-  /** Read the outline's geometry. Call after every SDF update. */
+  /**
+   * Read the outline's geometry for the bound finger and use it. Call after its SDF changes.
+   * This waits on the GPU, so it is done when shapes change, never on a nail switch: keep the
+   * returned geometry with the finger and hand it back with `useGeometry`.
+   */
   refreshGeometry(renderer) {
     this.material.uniforms.uMode.value = 1;
     fullscreenPass(renderer, this.material, this.target);
     this.material.uniforms.uMode.value = 0;
-    const px = new Uint8Array(this.pixels.length);
+    const px = new Uint8Array(this.pixels.length), n = STATS_SIZE * STATS_SIZE;
+    const g = { inside: new Float32Array(n), outside: new Uint8Array(n), insideSum: 1 };
     renderer.readRenderTargetPixels(this.target, 0, 0, STATS_SIZE, STATS_SIZE, px);
     let sum = 0;
-    for (let i = 0, k = 0; i < this.inside.length; i++, k += 4) {
-      this.inside[i] = px[k] / 255; sum += this.inside[i];
-      this.outside[i] = px[k + 1] === 255 ? 1 : 0;
+    for (let i = 0, k = 0; i < n; i++, k += 4) {
+      g.inside[i] = px[k] / 255; sum += g.inside[i];
+      g.outside[i] = px[k + 1] === 255 ? 1 : 0;
     }
-    this.insideSum = Math.max(1, sum);
+    g.insideSum = Math.max(1, sum);
+    this.useGeometry(g);
+    return g;
   }
+
+  /** Use a finger's outline geometry from an earlier `refreshGeometry`. */
+  useGeometry(g) { this.inside = g.inside; this.outside = g.outside; this.insideSum = g.insideSum; }
 
   /**
    * Render and read the stats. The frame loop calls this loosely (a read already in flight is

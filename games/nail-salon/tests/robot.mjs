@@ -47,7 +47,8 @@ await shot('fast-twice');
 r = await run(async () => {
   const S = window.__salon, out = {};
   await S.clear(); await S.stroke([[0.42, 0.3], [0.42, 0.7]], { speed: 1.0 }); out.wall = await S.stats();
-  await S.clear(); await S.stroke([[0.72, 0.1], [0.72, 0.7]], { speed: 1.0 }); out.skin = await S.stats();
+  // Starts on the skin (a press on empty background is a swipe between nails, never a stroke).
+  await S.clear(); await S.stroke([[0.58, 0.12], [0.72, 0.2], [0.72, 0.7]], { speed: 1.0 }); out.skin = await S.stats();
   return out;
 });
 check('stroke against the wall does not spill', r.wall.spill === 0 && r.wall.coverage > 0.05, `spill ${f(r.wall.spill)} coverage ${f(r.wall.coverage)}`);

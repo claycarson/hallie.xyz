@@ -66,5 +66,18 @@ export class Leveler {
     }
   }
 
+  /**
+   * Drying only, for a finger that isn't being painted (its targets are smaller than the
+   * scratch, and nobody is looking closely). `state.debt` carries the fractional steps.
+   */
+  dryOnly(renderer, targets, seconds, state) {
+    state.debt = (state.debt || 0) + 255 / (seconds * WET_HZ);
+    const steps = Math.floor(state.debt);
+    if (steps <= 0) return;
+    state.debt -= steps;
+    this.dry.uniforms.uK.value = steps / 255;
+    fullscreenPass(renderer, this.dry, targets.detail);
+  }
+
   dispose() { this.scratch.dispose(); this.level.dispose(); this.dry.dispose(); }
 }

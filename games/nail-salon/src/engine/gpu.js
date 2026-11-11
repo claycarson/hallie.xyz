@@ -57,3 +57,16 @@ export function makeTarget(size, type, filter = THREE.LinearFilter, format = THR
     colorSpace: THREE.NoColorSpace,
   });
 }
+
+const _copy = new THREE.ShaderMaterial({
+  uniforms: { tSrc: { value: null } },
+  vertexShader: FULLSCREEN_VERT,
+  fragmentShader: 'uniform sampler2D tSrc; varying vec2 vUv; void main() { gl_FragColor = texture2D(tSrc, vUv); }',
+  depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+});
+
+/** Copy one target into another of any size, with the source's filtering (linear scales smoothly). */
+export function copyTarget(renderer, src, dst) {
+  _copy.uniforms.tSrc.value = src.texture;
+  fullscreenPass(renderer, _copy, dst);
+}

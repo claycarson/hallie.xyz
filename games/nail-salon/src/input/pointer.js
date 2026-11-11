@@ -19,6 +19,8 @@ export class PointerInput {
    * @param {number} [o.tapMs] a touch that lifts before this without moving still paints (a dab)
    * @param {number} [o.palmSizePx] a touch contact wider than this is a palm, never a finger
    * @param {() => boolean} [o.blocked] no stroke may start while this is true (the hand is turning)
+   * @param {(cx: number, cy: number) => boolean} [o.offHand] true where a press is on empty
+   *   background: it starts a swipe between nails, never a stroke
    * @param {(cx: number, cy: number, x: number, y: number, altitude: number | null, azimuth: number | null, touching: boolean) => void} [o.onCursor] where the Pencil is, for the brush model only
    * @param {() => void} [o.onStrokeStart]
    * @param {() => void} [o.onStrokeEnd]
@@ -77,9 +79,14 @@ export class PointerInput {
     return (s.width ?? 0) > max || (s.height ?? 0) > max;
   }
 
-  /** May a touch press a button right now (the turn button, the bottle)? Not a palm's. */
+  /**
+   * May a touch press a button or swipe right now? Not a palm's: not palm-sized, and not while
+   * the Pencil is in use (within `pressPalmMs` of a pen sample). Unlike painting, a finger
+   * tapping an arrow a moment after the Pencil lifts is the normal case.
+   */
   touchMayPress(e) {
-    return e.pointerType !== 'touch' || (this.canPaint('touch', e.timeStamp) && !this._palmSized(e));
+    if (e.pointerType !== 'touch') return true;
+    return !this._palmSized(e) && e.timeStamp - this.lastPenAt > (this.o.pressPalmMs ?? 800);
   }
 
   /** Tell the brush model where the Pencil is. Never touches the stroke engine. */
@@ -125,7 +132,7 @@ export class PointerInput {
       if (kind === 'down' && engine.down && this.strokeType !== 'pen') this._end();
     }
     if (kind === 'down') {
-      if (this.o.blocked?.() || !this.canPaint(type, t)) return;
+      if (this.o.blocked?.() || !this.canPaint(type, t) || this.o.offHand?.(s.clientX, s.clientY)) return;
       if (type === 'touch') {
         if (!this._palmSized(s)) this.pending = { samples: [copySample(s)] };
         return;

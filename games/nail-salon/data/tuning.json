@@ -39,8 +39,11 @@
     "palmSeconds": 60,
     "touchDelayMs": 120,
     "tapMs": 250,
-    "palmSizePx": 40
+    "palmSizePx": 40,
+    "pressPalmMs": 800
   },
+  "nav": { "swipePx": 70, "swipeMs": 700, "tapPx": 14, "pickPx": 90 },
+  "paint": { "activeSize": 1024, "restSize": 512 },
   "nail": { "gloss": 0.5 },
   "brushModel": {
     "minLeanDeg": 25,
