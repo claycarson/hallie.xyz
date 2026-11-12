@@ -77,7 +77,13 @@ export class BrushModel {
     parent.add(this.shadow);
   }
 
-  setPolish(color) { this.bristleColor.color.set(color); }
+  setPolish(color) { const m = this.bristleColor; m.color.set(color); m.opacity = 1; m.transmission = 0; }
+  /** Clear-coat bristles: glassy, faintly tinted (base pink, gloss clear, matte milky). */
+  setClear(kind) {
+    const m = this.bristleColor;
+    m.color.set(kind === 'base' ? '#ffd9e2' : kind === 'matte' ? '#f4f1ee' : '#eef6ff');
+    m.opacity = kind === 'matte' ? 0.75 : 0.55;
+  }
   setCap(cap) { this.capMat.color.set(cap.color); this.capMat.metalness = cap.metalness; this.capMat.roughness = cap.roughness; }
 
   /**

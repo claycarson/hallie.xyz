@@ -25,6 +25,11 @@ export function makeFingerUniforms(frame, fold, tuning) {
     // Clear coats on this nail (PLAN M1.4): x = base coat 0/1, y = top coat 0 none / 1 gloss / 2 matte.
     uCoat: { value: new THREE.Vector2(0, 0) },
     uCoatK: { value: new THREE.Vector4(tuning.coats.glossRoughness, tuning.coats.matteRoughness, tuning.coats.glossClearcoat, tuning.coats.baseClearcoat) },
+    // Polish with no gloss top coat is a soft sheen (x roughness floor, y clear coat, z its roughness);
+    // the gloss coat is what makes it a mirror.
+    uSheen: { value: new THREE.Vector3(tuning.coats.polishRoughness, tuning.coats.polishClearcoat, tuning.coats.polishClearcoatRoughness) },
+    // The flood moment: a band of light sweeps up the nail, 0…1; < 0 = none.
+    uSweep: { value: -1 },
     uWorldToPaint: { value: frame.worldToPaint },
   };
 }
@@ -35,6 +40,10 @@ uniform vec4 uRect;
 uniform float uBed, uSmile, uCuticleDepth, uSkinFilm, uGloss;
 uniform vec2 uCoat;
 uniform vec4 uCoatK;
+uniform vec3 uSheen;
+uniform float uSweep;
+// 1 when this nail has a gloss top coat.
+float nlGlossy() { return step(0.5, uCoat.y) * step(uCoat.y, 1.5); }
 uniform vec2 uLunula;
 uniform vec3 uBedCol, uSkinCol;
 uniform vec2 uGroove, uRim;
@@ -117,6 +126,8 @@ export function makeNailMaterial(uniforms) {
           nlCol = mix(nlCol, mix(nlBare, nlPig.rgb / max(nlFilm, 1e-3), nlFilm * 0.6), nlJel);
           // A wet clear coat on bare nail: a slight lift where the brush has been, so the stroke shows.
           nlCol *= 1.0 + 1.0 * nlWet * (1.0 - nlFilm);
+          // A dry base coat on bare nail: smoother, a touch brighter and pinker.
+          nlCol = mix(nlCol, nlCol * vec3(1.06, 1.02, 1.04) + vec3(0.02, 0.0, 0.01), uCoat.x * (1.0 - nlFilm));
           // Cuticle rim: thin translucent skin over the plate along the proximal edge only.
           float nlProx = (1.0 - smoothstep(uCuticleDepth * 0.9, uCuticleDepth * 1.6, nlP.y));
           float nlRimK = (1.0 - smoothstep(uRim.x * 0.5, uRim.x * 1.8, nlD)) * nlProx * uRim.y;
@@ -124,10 +135,18 @@ export function makeNailMaterial(uniforms) {
           // The folds shade the plate where it tucks under them.
           nlCol *= mix(vec3(1.0), mix(vec3(0.70, 0.54, 0.52), vec3(1.0), smoothstep(0.0, 0.075, nlD)), nlFold);
           diffuseColor.rgb = nlCol;`,
+        emissivemap_fragment: /* glsl */`
+          if (uSweep >= 0.0) {          // a coat has just spread over the nail: light runs up it
+            float nlC = mix(-0.5, uBed + 0.7, uSweep);
+            float nlB = exp(-pow((nlP.y - nlC - 0.3 * nlP.x) / 0.12, 2.0)) * sin(3.14159 * uSweep);
+            totalEmissiveRadiance += vec3(1.0, 0.97, 0.94) * nlB * 0.6 * (1.0 - nlRimK);
+          }`,
         metalnessmap_fragment: /* glsl */`
           float nlRough = mix(0.38, nlM.g, nlFilm);
-          nlRough = mix(nlRough, 0.06, nlWet * 0.5);                  // wet polish or a wet clear coat
+          // Without a gloss top coat, dry polish is a soft sheen (metals keep their own shine).
+          nlRough = mix(nlRough, max(nlRough, uSheen.x), nlFilm * (1.0 - nlGlossy()) * (1.0 - nlM.b));
           if (uCoat.y > 1.5) nlRough = uCoatK.y;                      // matte top coat: velvet
+          nlRough = mix(nlRough, 0.05, nlWet);                         // anything wet is glassy, matte too
           // (A gloss top coat is a clear layer over the polish: it works on the clear coat below,
           // not on the polish's own roughness, which would mirror the dark parts of the room.)
           nlRough = mix(nlRough, 0.04, nlDt.b * nlFilm);               // sparkle flakes are little mirrors
@@ -140,25 +159,29 @@ export function makeNailMaterial(uniforms) {
           }`,
         normal_fragment_maps: /* glsl */`
           {
-            float ridge = (1.0 - nlFilm) * 0.012 * cos(nlP.x * 120.0 + 6.0 * nlNoise(vec2(nlP.x * 14.0, nlP.y * 0.7))) * nlNoise(vec2(nlP.x * 25.0, 3.0));
+            float ridge = (1.0 - nlFilm) * (1.0 - 0.8 * uCoat.x) * 0.012 * cos(nlP.x * 120.0 + 6.0 * nlNoise(vec2(nlP.x * 14.0, nlP.y * 0.7))) * nlNoise(vec2(nlP.x * 25.0, 3.0));
             vec2 flake = (nlDt.rg - 0.5) * 1.6 * nlFilm;
             normal = nlTilt(normal, -vViewPosition, nlP, vec2(ridge, 0.0) + flake);
           }`,
         lights_physical_fragment: /* glsl */`
           material.clearcoat = max(0.22 * (1.0 - nlFilm), smoothstep(0.2, 0.8, nlFilm) * (1.0 - smoothstep(0.5, 0.7, nlM.g)));
-          material.clearcoat *= (1.0 - nlRimK) * mix(1.0, uGloss, nlFilm);
+          material.clearcoat *= (1.0 - nlRimK) * mix(1.0, uGloss * mix(uSheen.y, 1.0, nlGlossy()), nlFilm);
           // Polish shine (tuning nail.gloss): the coat's own reflection too, but not a metal's.
-          material.specularColor *= mix(1.0, uGloss, nlFilm * (1.0 - metalnessFactor));
-          material.clearcoatRoughness = mix(0.25, 0.10, nlFilm);
-          // Clear coats: base adds a little shine to a bare nail, gloss a lot, matte takes it all away.
-          float nlCoatCC = max(max(uCoat.x * uCoatK.w, step(0.5, uCoat.y) * step(uCoat.y, 1.5) * uCoatK.z), nlWet * 0.5);
+          material.specularColor *= mix(1.0, uGloss, nlFilm * (1.0 - metalnessFactor) * (1.0 - nlGlossy()));
+          material.clearcoatRoughness = mix(0.25, mix(uSheen.z, 0.10, nlGlossy()), nlFilm);
+          // Clear coats: base adds a little shine to a bare nail, gloss makes a mirror, matte takes it away.
+          float nlCoatCC = max(uCoat.x * uCoatK.w, nlGlossy() * uCoatK.z);
           material.clearcoat = max(material.clearcoat, nlCoatCC * (1.0 - nlRimK));     // not over the cuticle rim
-          if (uCoat.y > 0.5 && uCoat.y < 1.5) material.clearcoatRoughness = uCoatK.x;
+          if (nlGlossy() > 0.5) material.clearcoatRoughness = uCoatK.x;
           if (uCoat.y > 1.5) { material.clearcoat = 0.0; material.specularColor *= 0.6; }
+          // Wet polish or a wet clear coat: glassy until it dries, whatever it dries to.
+          material.clearcoat = mix(material.clearcoat, 1.0 - nlRimK, nlWet);
+          material.clearcoatRoughness = mix(material.clearcoatRoughness, 0.10, nlWet);
+          material.specularColor = mix(material.specularColor, vec3(1.0), nlWet * (1.0 - metalnessFactor) * 0.6);
           material.iridescence = nlM.a * nlFilm;`,
       },
     });
-  m.customProgramCacheKey = () => 'nail-plate-13';
+  m.customProgramCacheKey = () => 'nail-plate-15';
   return m;
 }
 

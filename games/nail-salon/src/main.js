@@ -173,13 +173,21 @@ async function boot() {
     f.coats = { ...coats };
     f.uniforms.uCoat.value.set(coats.base ? 1 : 0, coats.top === 'gloss' ? 1 : coats.top === 'matte' ? 2 : 0);
   }
+  const sweep = { f: /** @type {Finger | null} */ (null), t0: 0 };
+  function updateSweep(now) {
+    if (!sweep.f) return;
+    const k = (now - sweep.t0) / tuning.coats.sweepMs;
+    sweep.f.uniforms.uSweep.value = k < 1 ? k : -1;
+    if (k >= 1) sweep.f = null;
+  }
   /** Start counting touches afresh on the active nail. */
   const resetTouch = () => touch.setOutline(active.info.points, active.info.length);
   function floodCoat() {
     const tool = state.tool;
     coatFlood.wet(renderer, active, big);
     setCoats(active, tool === 'base' ? { ...active.coats, base: true } : { ...active.coats, top: tool });
-    state.advanceAt = performance.now() + tuning.coats.advanceMs;
+    sweep.f = active; sweep.t0 = performance.now();          // light runs up the nail
+    state.advanceAt = sweep.t0 + tuning.coats.advanceMs;
   }
   /** After a flood: the next nail on screen (to the right, then from the left) without this coat. */
   function advanceCoat() {
@@ -231,7 +239,8 @@ async function boot() {
     engine.setTool(name === 'polish' ? null : coat ? tuning.coats : T[name]);
     stamps.setEraser(name === 'polish' ? null : coat ? 'coat' : name, T.swab.edge, T.remover.idClear);
     resetTouch();
-    // The 3D brush shows only for polish (loop: brushModel.update). Swab and pad models: later.
+    // The 3D brush shows for polish and the clear coats (loop: brushModel.update). Swab and pad models: later.
+    if (coat) brushModel.setClear(coat); else brushModel.setPolish(state.polish.color);
     for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('on', b.getAttribute('data-tool') === name);
     return true;
   }
@@ -280,7 +289,7 @@ async function boot() {
     if (!p) throw new Error(`unknown polish: ${id}`);
     state.polish = p;
     stamps.setPolish(new THREE.Color(p.color), catalog.finishes[p.finish]);   // sRGB hex → linear
-    brushModel.setPolish(p.color);
+    if (!coatOf(state.tool)) brushModel.setPolish(p.color);
     engine.dip();
   }
 
@@ -588,7 +597,8 @@ async function boot() {
     perf.frame += (now - prev - perf.frame) * 0.1;
     const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
     if (rig.update(now)) placeCamera();
-    brushModel.update(now, engine.down, rig.view === 'nail' && !rig.turning && state.tool === 'polish');
+    brushModel.update(now, engine.down, rig.view === 'nail' && !rig.turning && (state.tool === 'polish' || !!coatOf(state.tool)));
+    updateSweep(now);
     active.frame.update();
     flush();
     if (!fixed) wetAdvance(dt);
